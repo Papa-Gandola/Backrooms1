@@ -1,58 +1,7 @@
-// Гуманоидная фигура: используется для напарника и для Кожекрада (его двойника).
+// Аватар напарника: реалистичная риггованная модель с анимациями.
 
 import * as THREE from 'three';
-import { clothMaterial, fleshMaterial } from './materials.js';
-
-// материалы общие для напарника и кожекрада — бейкаются один раз
-let _cloth, _dark, _face;
-function humanMats() {
-  if (!_cloth) {
-    _cloth = clothMaterial(0x4f6b8f);
-    _dark = clothMaterial(0x23282e);
-    _face = fleshMaterial(0xc9a98c, 0x8f6a55, 0.55);
-  }
-  return { cloth: _cloth, dark: _dark, face: _face };
-}
-
-export function buildHumanoid(color = 0x6b7a8f, isStealer = false) {
-  const g = new THREE.Group();
-  const { cloth: skin, dark, face } = humanMats();
-
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.55, 8, 16), skin);
-  torso.position.y = 1.05;
-  g.add(torso);
-
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 18, 14), face);
-  head.position.y = 1.62;
-  g.add(head);
-
-  // глаза — у кожекрада сплошь чёрные и чуть больше
-  const eyeMat = new THREE.MeshStandardMaterial({
-    color: isStealer ? 0x000000 : 0x222222,
-    roughness: isStealer ? 0.1 : 0.5,
-  });
-  // лицо аватара смотрит вдоль локальной +Z
-  for (const sx of [-1, 1]) {
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(isStealer ? 0.035 : 0.02, 6, 6), eyeMat);
-    eye.position.set(sx * 0.06, 1.65, 0.13);
-    g.add(eye);
-  }
-
-  const legs = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.5, 4, 8), dark);
-  legs.position.y = 0.45;
-  g.add(legs);
-
-  const armGeo = new THREE.CapsuleGeometry(0.06, 0.5, 4, 6);
-  const armL = new THREE.Mesh(armGeo, skin);
-  armL.position.set(-0.3, 1.1, 0);
-  g.add(armL);
-  const armR = new THREE.Mesh(armGeo, skin);
-  armR.position.set(0.3, 1.1, 0);
-  g.add(armR);
-
-  g.userData = { armL, armR, head, walkPhase: 0 };
-  return g;
-}
+import { createCharacter } from './characters.js';
 
 export function makeNameSprite(name, color = '#7ec850') {
   const c = document.createElement('canvas');
@@ -76,7 +25,10 @@ export function makeNameSprite(name, color = '#7ec850') {
 export class PartnerAvatar {
   constructor(scene, name) {
     this.scene = scene;
-    this.mesh = buildHumanoid(0x4f6b8f, false);
+    this.char = createCharacter();
+    this.mesh = new THREE.Group();
+    this.mesh.add(this.char.root);
+
     this.nameSprite = makeNameSprite(name);
     this.mesh.add(this.nameSprite);
 
@@ -85,7 +37,7 @@ export class PartnerAvatar {
     this.scene.add(this.flashTarget);
     this.flash.target = this.flashTarget;
     this.mesh.add(this.flash);
-    this.flash.position.set(0.2, 1.4, -0.2);
+    this.flash.position.set(0.2, 1.4, 0.2);
 
     this.cur = { x: 0, z: 0, yaw: 0 };
     this.dst = { x: 0, z: 0, yaw: 0, pitch: 0, light: false, crouch: false, moving: false, running: false, hidden: false };
@@ -110,24 +62,29 @@ export class PartnerAvatar {
     this.cur.yaw += dy * k;
 
     this.mesh.position.set(this.cur.x, 0, this.cur.z);
-    this.mesh.rotation.y = this.cur.yaw + Math.PI;
+    this.mesh.rotation.y = this.cur.yaw + Math.PI; // модель смотрит вдоль +Z
     this.mesh.visible = !this.dst.hidden;
-    this.mesh.scale.y = this.dst.crouch ? 0.7 : 1.0;
 
-    // анимация ходьбы
-    const ud = this.mesh.userData;
+    // выбор анимации
     if (this.dst.moving) {
-      ud.walkPhase += dt * (this.dst.running ? 11 : 6);
-      ud.armL.rotation.x = Math.sin(ud.walkPhase) * 0.6;
-      ud.armR.rotation.x = -Math.sin(ud.walkPhase) * 0.6;
+      this.char.play(this.dst.running ? 'Run' : 'Walk', 0.2, this.dst.crouch ? 0.7 : 1);
     } else {
-      ud.armL.rotation.x *= 0.9;
-      ud.armR.rotation.x *= 0.9;
+      this.char.play('Idle', 0.3);
     }
-    ud.head.rotation.x = -(this.dst.pitch || 0) * 0.6;
+    this.char.mixer.update(dt);
+
+    // процедурные поправки ПОСЛЕ микшера: наклон головы по pitch, присед
+    const b = this.char.bones;
+    if (b.Head) b.Head.rotation.x -= (this.dst.pitch || 0) * 0.55;
+    if (this.dst.crouch) {
+      if (b.Spine) b.Spine.rotation.x += 0.45;
+      if (b.Hips) this.char.root.position.y = -0.32;
+    } else {
+      this.char.root.position.y = 0;
+    }
 
     // фонарик
-    this.flash.intensity = (this.dst.light && !this.dst.hidden) ? 45 : 0;
+    this.flash.intensity = (this.dst.light && !this.dst.hidden) ? 30 : 0;
     if (this.dst.light) {
       const fx = -Math.sin(this.cur.yaw), fz = -Math.cos(this.cur.yaw);
       this.flashTarget.position.set(this.cur.x + fx * 6, 1.2, this.cur.z + fz * 6);

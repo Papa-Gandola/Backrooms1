@@ -191,8 +191,8 @@ function initGame() {
   renderer = new THREE.WebGLRenderer({ canvas: $('canvas'), antialias: true });
   renderer.setSize(innerWidth, innerHeight);
   renderer.setPixelRatio(Math.min(devicePixelRatio, 1.75));
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.2;
+  renderer.toneMapping = THREE.AgXToneMapping;
+  renderer.toneMappingExposure = 1.75;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
@@ -289,7 +289,7 @@ function loadLevel(data) {
 
   // базовое освещение
   if (world.ambLight) scene.remove(world.ambLight);
-  world.ambLight = new THREE.AmbientLight(0xffffff, data.ambient * 0.9);
+  world.ambLight = new THREE.AmbientLight(0xffffff, data.ambient * 1.15);
   scene.add(world.ambLight);
 
   if (entityView) entityView.dispose();

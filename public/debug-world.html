@@ -31,8 +31,8 @@ document.getElementById('label').textContent = data.name;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.2;
+renderer.toneMapping = THREE.AgXToneMapping;
+renderer.toneMappingExposure = 1.75;
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
@@ -44,7 +44,7 @@ scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
 scene.environmentIntensity = 0.08 + data.ambient * 0.3;
 scene.fog = new THREE.FogExp2(data.fog.color, data.fog.density);
 scene.background = new THREE.Color(data.fog.color).multiplyScalar(0.25);
-scene.add(new THREE.AmbientLight(0xffffff, data.ambient * 0.9));
+scene.add(new THREE.AmbientLight(0xffffff, data.ambient * 1.15));
 
 const world = new World(scene);
 world.build(data);
