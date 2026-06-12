@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<!-- Временная страница для скриншотов сущностей: /debug-entities.html?type=wanderer | ?scare=hound -->
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<style>
+  body { margin: 0; background: #000; overflow: hidden; }
+  canvas { display: block; }
+  .hidden { display: none !important; }
+  #jumpscare { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: #000; }
+  #scareCanvas { width: 90vmin; height: 90vmin; }
+  #label { position: fixed; left: 0; right: 0; bottom: 24px; text-align: center;
+           color: #d8c051; font: 28px Oswald, sans-serif; letter-spacing: 4px; text-shadow: 0 0 12px #000; z-index: 50; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }
+</script>
+</head>
+<body>
+<div id="label"></div>
+<div id="jumpscare" class="hidden"><canvas id="scareCanvas" width="800" height="800"></canvas></div>
+<div id="deathScreen" class="hidden"></div>
+<script type="module">
+import * as THREE from 'three';
+import { EntityView } from './js/entities.js';
+import { UI } from './js/ui.js';
+
+const q = new URLSearchParams(location.search);
+const names = {
+  wanderer: 'СКИТАЛЕЦ — уровень 0', hound: 'ГОНЧАЯ — уровень 1',
+  smiler: 'УЛЫБАЮЩИЙСЯ — уровень 2', skinstealer: 'КОЖЕКРАД — уровень 3',
+  reaper: 'ЖНЕЦ — уровень 4',
+};
+
+if (q.get('scare')) {
+  const type = q.get('scare');
+  document.getElementById('label').textContent = 'СКРИМЕР: ' + (names[type] || type);
+  UI.jumpscare(type);
+  // не даём оверлею скрыться, чтобы успеть снять кадр
+  setInterval(() => {
+    document.getElementById('jumpscare').classList.remove('hidden');
+    document.getElementById('deathScreen').classList.add('hidden');
+  }, 200);
+} else {
+  const type = q.get('type') || 'wanderer';
+  document.getElementById('label').textContent = names[type] || type;
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.2;
+  document.body.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  const bg = { wanderer: 0x14110a, hound: 0x05060a, smiler: 0x0a0503, skinstealer: 0x1a2424, reaper: 0x0a0103 }[type] || 0x0a0a0a;
+  scene.background = new THREE.Color(bg);
+  scene.fog = new THREE.FogExp2(bg, 0.06);
+
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(30, 30),
+    new THREE.MeshStandardMaterial({ color: 0x3a3528, roughness: 0.95 })
+  );
+  floor.rotation.x = -Math.PI / 2;
+  scene.add(floor);
+
+  scene.add(new THREE.AmbientLight(0xffffff, type === 'smiler' ? 0.12 : 0.45));
+  const key = new THREE.PointLight(0xfff2c0, type === 'smiler' ? 6 : 30, 25, 1.6);
+  key.position.set(2.2, 2.6, 2.5);
+  scene.add(key);
+  const rim = new THREE.PointLight(0x8fb0ff, 12, 20, 1.6);
+  rim.position.set(-2.5, 2.2, -2);
+  scene.add(rim);
+
+  const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.05, 100);
+  camera.position.set(0.9, 1.5, 3.1);
+  camera.lookAt(0, 1.25, 0);
+
+  const ev = new EntityView(scene, type, 'Борис');
+  ev.netUpdate({ x: 0, z: 0, state: type === 'hound' ? 'chase' : 'hunt' });
+  ev.cur.x = 0; ev.cur.z = 0;
+
+  let last = 0;
+  function loop(t) {
+    requestAnimationFrame(loop);
+    const dt = Math.min(0.05, (t - last) / 1000 || 0.016);
+    last = t;
+    ev.update(dt, { x: camera.position.x, z: camera.position.z });
+    renderer.render(scene, camera);
+  }
+  requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>

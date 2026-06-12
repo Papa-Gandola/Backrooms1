@@ -21,9 +21,10 @@ export function buildHumanoid(color = 0x6b7a8f, isStealer = false) {
     color: isStealer ? 0x000000 : 0x222222,
     roughness: isStealer ? 0.1 : 0.5,
   });
+  // лицо аватара смотрит вдоль локальной +Z
   for (const sx of [-1, 1]) {
     const eye = new THREE.Mesh(new THREE.SphereGeometry(isStealer ? 0.035 : 0.02, 6, 6), eyeMat);
-    eye.position.set(sx * 0.06, 1.65, -0.13);
+    eye.position.set(sx * 0.06, 1.65, 0.13);
     g.add(eye);
   }
 
