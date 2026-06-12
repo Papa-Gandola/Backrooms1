@@ -103,10 +103,10 @@ function wallpaper() {
     const lowGrime = step(0.75, 1.0, v) * 0.35 * (0.5 + mottle);
     const age = clamp01(drip + lowGrime + Math.pow(fbm(u + 0.31, v + 0.7, 5, 4), 3) * 0.8);
 
-    let r = 182, g = 159, b = 74;
+    let r = 200, g = 176, b = 86;
     const tone = mix(0.9, 1.06, sMask) * mix(0.86, 1.1, mottle) * mix(1, 0.92, grain);
     r *= tone; g *= tone; b *= tone * 0.96;
-    r = mix(r, 52, age * 0.75); g = mix(g, 42, age * 0.75); b = mix(b, 20, age * 0.75);
+    r = mix(r, 58, age * 0.6); g = mix(g, 47, age * 0.6); b = mix(b, 22, age * 0.6);
     o.r = r; o.g = g; o.b = b;
     o.h = 0.5 + (sMask - 0.5) * 0.08 + grain * 0.12 + mottle * 0.05 - age * 0.1;
     o.rough = 0.93 - age * 0.25 + grain * 0.05;
@@ -355,7 +355,7 @@ export function themeMaterials(theme) {
       ceiling: setRepeat(std(ceilingTiles()), 22, 22),
       trim: new THREE.MeshStandardMaterial({ color: 0x6e5e2e, roughness: 0.7 }),
       lightColor: new THREE.Color(0xfff2b8),
-      lightIntensity: 18,
+      lightIntensity: 26,
     };
   } else if (theme === 'warehouse') {
     m = {

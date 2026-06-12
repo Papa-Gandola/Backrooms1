@@ -288,10 +288,10 @@ function genLevel(index, seed) {
       name: 'УРОВЕНЬ 0 — ЖЁЛТЫЕ КОМНАТЫ',
       hint: 'Найдите 3 предохранителя и вставьте их в щиток у люка. Сущность идёт на звук — не бегайте без нужды.',
       theme: 'yellow', grid, spawn, exit, items,
-      lights: placeLights(rng, grid, 5, 2, 0.18),
+      lights: placeLights(rng, grid, 4, 2, 0.10),
       entity: { type: 'wanderer' },
       puzzle: { kind: 'fuses', need: 3 },
-      ceilH: 3.0, fog: { color: 0x8a7a3a, density: 0.055 }, ambient: 0.5,
+      ceilH: 3.0, fog: { color: 0x9a8a45, density: 0.045 }, ambient: 0.75,
     };
   } else if (index === 1) {
     // УРОВЕНЬ 1 — Тёмный склад. Сущность: Гончая (реагирует на свет и бег). Кооп-рычаги.

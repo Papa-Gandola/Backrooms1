@@ -70,6 +70,12 @@ $('joinBtn').onclick = async () => {
 
 $('codeInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('joinBtn').click(); });
 
+// модули (включая модели) загружены — открываем кнопки
+$('createBtn').disabled = false;
+$('createBtn').textContent = 'СОЗДАТЬ ИГРУ';
+$('joinBtn').disabled = false;
+$('joinBtn').textContent = 'ВОЙТИ';
+
 // ---------- сетевые события ----------
 
 net.on('err', (m) => UI.menuError(m.msg));
