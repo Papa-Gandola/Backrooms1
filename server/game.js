@@ -50,6 +50,8 @@ class GameSession {
       this.puzzle = { kind: 'valves', done: new Set() };
     } else if (pz.kind === 'switches') {
       this.puzzle = { kind: 'switches', done: new Set() };
+    } else if (pz.kind === 'collect') {
+      this.puzzle = { kind: 'collect', got: new Set(), itemType: pz.itemType, need: pz.need };
     }
   }
 
@@ -174,6 +176,11 @@ class GameSession {
       this.broadcastPuzzle();
       this.wakeReaper();
       if (pz.done.size >= this.level.puzzle.need) this.openDoor();
+    } else if (pz.kind === 'collect' && item.type === pz.itemType && !pz.got.has(item.id)) {
+      pz.got.add(item.id);
+      this.room.broadcast({ t: 'item', id: item.id, ev: 'taken', by: p.slot });
+      this.broadcastPuzzle();
+      if (pz.got.size >= this.level.puzzle.need) this.openDoor();
     } else if (item.type === 'locker') {
       // клиент сам управляет скрытием, сервер просто верит флагу hidden из state
     }
@@ -206,6 +213,7 @@ class GameSession {
     else if (pz.kind === 'levers') state = { kind: 'levers', pulled: Object.keys(pz.pulledAt), done: [...pz.done] };
     else if (pz.kind === 'glyphs') state = { kind: 'glyphs', slots: pz.slots };
     else if (pz.kind === 'valves') state = { kind: 'valves', done: [...pz.done], need: this.level.puzzle.need };
+    else if (pz.kind === 'collect') state = { kind: 'collect', got: [...pz.got], need: pz.need, itemType: pz.itemType };
     else state = { kind: 'switches', done: [...pz.done], need: this.level.puzzle.need };
     this.room.broadcast({ t: 'puzzle', state });
   }
@@ -342,6 +350,51 @@ class GameSession {
         e.speed = 1.0;
       }
       this.roamOrFollow(e, dt);
+    } else if (e.type === 'wretch') {
+      // патрулирует и замечает игрока в прямой видимости
+      e.speed = e.state === 'chase' ? 4.3 : 2.0;
+      let spotted = null;
+      for (const p of players) {
+        if (p.hidden) continue;
+        const d2v = dist2(e.x, e.z, p.pos.x, p.pos.z);
+        if (d2v < 15 * 15 && this.lineOfSight(e.x, e.z, p.pos.x, p.pos.z)) { spotted = p; break; }
+      }
+      if (spotted) {
+        e.state = 'chase';
+        e.target = { x: spotted.pos.x, z: spotted.pos.z };
+        e.lastSeen = 4;
+        e.repathIn = Math.min(e.repathIn, 0.25);
+      } else if (e.state === 'chase') {
+        e.lastSeen -= dt;
+        if (e.lastSeen <= 0) e.state = 'roam';
+      }
+      this.roamOrFollow(e, dt);
+    } else if (e.type === 'partygoer') {
+      // вечно идёт к ближайшему, но замирает, пока на него смотрят
+      let nearest = null, nd = Infinity;
+      for (const p of players) {
+        const d2v = dist2(e.x, e.z, p.pos.x, p.pos.z);
+        if (d2v < nd) { nd = d2v; nearest = p; }
+      }
+      let watched = false;
+      for (const p of players) {
+        const d2v = dist2(e.x, e.z, p.pos.x, p.pos.z);
+        if (d2v > 24 * 24) continue;
+        if (!this.lineOfSight(p.pos.x, p.pos.z, e.x, e.z)) continue;
+        const ang = Math.atan2(e.x - p.pos.x, e.z - p.pos.z);
+        const diff = Math.abs(normAngle(ang - p.yaw - Math.PI));
+        if (diff < 0.6) { watched = true; break; }
+      }
+      if (watched) {
+        e.state = 'frozen';
+        return; // стоит как вкопанный
+      }
+      if (nearest) {
+        e.state = 'hunt';
+        e.speed = nd < 10 * 10 ? 3.1 : 2.2;
+        e.target = { x: nearest.pos.x, z: nearest.pos.z };
+        this.roamOrFollow(e, dt);
+      }
     } else if (e.type === 'reaper') {
       // финальная погоня: всегда преследует ближайшего
       e.speed = 4.6; // чуть медленнее спринта игрока — шанс есть, пока есть выносливость

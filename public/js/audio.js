@@ -103,6 +103,25 @@ export class AudioEngine {
       src.start(t);
       this.ambNodes.push(src, g);
     }
+    if (theme === 'hotel') {
+      // ветер в коридорах + редкие скрипы половиц
+      const src = this.ctx.createBufferSource();
+      src.buffer = this._noiseBuffer(4); src.loop = true;
+      const f = this.ctx.createBiquadFilter();
+      f.type = 'bandpass'; f.frequency.value = 420; f.Q.value = 1.8;
+      const g = this.ctx.createGain(); g.gain.value = 0.012;
+      const lfo2 = this.ctx.createOscillator(); lfo2.frequency.value = 0.13;
+      const lg2 = this.ctx.createGain(); lg2.gain.value = 0.008;
+      lfo2.connect(lg2).connect(g.gain);
+      src.connect(f).connect(g).connect(this.master);
+      src.start(t); lfo2.start(t);
+      this.ambNodes.push(src, g, lfo2);
+      this._creakLoop();
+    }
+    if (theme === 'party') {
+      // расстроенная музыкальная шкатулка
+      this._musicBoxLoop(0);
+    }
     if (theme === 'final') {
       // тревожная сирена вдалеке
       const sir = this.ctx.createOscillator();
@@ -118,6 +137,55 @@ export class AudioEngine {
 
     // позиционный источник сущности
     this._makeEntitySource(theme);
+  }
+
+  _creakLoop() {
+    if (!this.ctx) return;
+    const delay = 4000 + Math.random() * 9000;
+    const timer = setTimeout(() => {
+      if (!this.ambNodes.length) return;
+      const t = this.ctx.currentTime;
+      const o = this.ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(90 + Math.random() * 60, t);
+      o.frequency.linearRampToValueAtTime(60 + Math.random() * 30, t + 0.5);
+      const f = this.ctx.createBiquadFilter();
+      f.type = 'lowpass'; f.frequency.value = 500;
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.linearRampToValueAtTime(0.03, t + 0.12);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.6);
+      const p = this.ctx.createStereoPanner();
+      p.pan.value = Math.random() * 2 - 1;
+      o.connect(f).connect(g).connect(p).connect(this.master);
+      o.start(t); o.stop(t + 0.7);
+      this._creakLoop();
+    }, delay);
+    this.ambNodes.push({ disconnect: () => clearTimeout(timer) });
+  }
+
+  _musicBoxLoop(step) {
+    if (!this.ctx) return;
+    // «К нам сегодня приходи» — кривая колыбельная из пяти нот
+    const notes = [523, 494, 440, 494, 523, 523, 523, 0, 494, 494, 494, 0, 523, 587, 659, 0];
+    const note = notes[step % notes.length];
+    const timer = setTimeout(() => {
+      if (!this.ambNodes.length) return;
+      if (note) {
+        const t = this.ctx.currentTime;
+        const detune = 1 + (Math.random() - 0.5) * 0.025; // фальшивит
+        const o = this.ctx.createOscillator();
+        o.type = 'triangle';
+        o.frequency.value = note * 0.5 * detune;
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(0.035, t);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.55);
+        o.connect(g).connect(this.master);
+        o.start(t); o.stop(t + 0.6);
+      }
+      this._musicBoxLoop(step + 1);
+    }, 460);
+    this.ambNodes.push({ disconnect: () => clearTimeout(timer) });
   }
 
   _dripLoop() {

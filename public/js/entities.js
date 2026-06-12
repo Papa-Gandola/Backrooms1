@@ -38,6 +38,18 @@ export class EntityView {
         this.char = instantiateMonster(gltf, { height: 1.35, rotateY: Math.PI / 2 });
         g.add(this.char.root);
       });
+    } else if (type === 'wretch') {
+      // Отверженный: красная безглазая тварь из отеля (свои анимации)
+      loadMonster('wretch').then(gltf => {
+        this.char = instantiateMonster(gltf, { height: 1.85, yOffset: -0.55 });
+        g.add(this.char.root);
+      });
+    } else if (type === 'partygoer') {
+      // Партигёрл: жёлтый «весельчак» =) — замирает, пока на него смотрят
+      loadMonster('partygoer').then(gltf => {
+        this.char = instantiateMonster(gltf, { height: 2.1 });
+        g.add(this.char.root);
+      });
     } else if (type === 'smiler') {
       this._buildSmiler(g);
     } else if (type === 'skinstealer') {
@@ -114,6 +126,8 @@ export class EntityView {
     }
 
     if (this.type === 'wanderer') this._animWanderer(dt, speed);
+    else if (this.type === 'wretch') this._animWretch(dt, speed);
+    else if (this.type === 'partygoer') this._animPartygoer(dt, speed);
     else if (this.type === 'hound') this._animHound(dt, speed);
     else if (this.type === 'skinstealer') this._animSkinstealer(dt, speed);
     else if (this.type === 'reaper') this._animReaper(dt, speed);
@@ -138,6 +152,23 @@ export class EntityView {
     if (this.char.head) {
       this.char.head.rotation.z += Math.sin(this.time * 2.3) * 0.1 + Math.sin(this.time * 17) * 0.03;
     }
+  }
+
+  _animWretch(dt, speed) {
+    if (!this.char) return;
+    if (speed < 0.15) this.char.play('idle', 0.3);
+    else if (this.state === 'chase' || speed > 2.6) this.char.play('run', 0.2, Math.max(0.8, speed / 4));
+    else this.char.play('walk', 0.3, Math.max(0.6, speed / 2));
+    this.char.mixer.update(dt);
+  }
+
+  _animPartygoer(dt, speed) {
+    if (!this.char) return;
+    // статичная модель: жуткое скольжение с покачиванием; под взглядом — замирает
+    if (this.state === 'frozen') return; // ни единого движения
+    this.char.root.position.y = Math.abs(Math.sin(this.time * 3.2)) * 0.05;
+    this.char.root.rotation.z = Math.sin(this.time * 2.1) * 0.04;
+    this.char.root.rotation.x = Math.min(0.14, speed * 0.05);
   }
 
   _animHound(dt, speed) {

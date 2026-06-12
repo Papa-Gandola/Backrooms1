@@ -210,7 +210,7 @@ export function instantiateMonster(gltf, opts = {}) {
   const inner = new THREE.Group(); // обёртка: масштаб + доворот модели
   inner.add(root);
   root.scale.setScalar(s);
-  root.position.y = -box.min.y * s;
+  root.position.y = -box.min.y * s + (opts.yOffset || 0);
   root.rotation.y = opts.rotateY || 0;
 
   const mixer = new THREE.AnimationMixer(root);

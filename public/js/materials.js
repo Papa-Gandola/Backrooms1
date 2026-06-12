@@ -284,6 +284,96 @@ function darkCarpet() {
   }, 1.2);
 }
 
+// Отель: бордовые полосатые обои с деревянной панелью внизу
+function hotelWall() {
+  return bake(512, (u, v, o) => {
+    const wood = v > 0.62; // нижняя треть — дерево (v растёт вниз стены)
+    if (wood) {
+      const grainW = fbm(u * 1.0, v * 0.3 + 0.7, 24, 4);
+      const planks = step(0.9, 0.97, Math.abs(Math.sin(v * Math.PI * 8)));
+      let r = 92, g = 58, b = 32;
+      const tone = mix(0.75, 1.2, grainW);
+      r *= tone; g *= tone; b *= tone;
+      r = mix(r, 30, planks); g = mix(g, 20, planks); b = mix(b, 12, planks);
+      o.r = r; o.g = g; o.b = b;
+      o.h = 0.5 + grainW * 0.15 - planks * 0.3;
+      o.rough = 0.45 + grainW * 0.2;
+      return;
+    }
+    const stripe = step(0.4, 0.6, 0.5 + 0.5 * Math.sin(u * Math.PI * 2 * 16));
+    const damask = fbm(u, v, 12, 3);
+    const age = Math.pow(fbm(u + 0.4, v + 0.2, 5, 4), 2.5);
+    let r = 96, g = 24, b = 28;
+    const tone = mix(0.85, 1.12, stripe) * mix(0.9, 1.08, damask);
+    r *= tone; g *= tone; b *= tone;
+    r = mix(r, 28, age); g = mix(g, 10, age); b = mix(b, 10, age);
+    o.r = r; o.g = g; o.b = b;
+    o.h = 0.5 + (stripe - 0.5) * 0.06 + damask * 0.08 - age * 0.1;
+    o.rough = 0.88 - stripe * 0.06;
+  }, 1.3);
+}
+
+function hotelCarpet() {
+  return bake(384, (u, v, o) => {
+    // ковровая дорожка с ромбами
+    const dx = (u * 8) % 1 - 0.5, dy = (v * 8) % 1 - 0.5;
+    const diamond = 1 - step(0.18, 0.3, Math.abs(dx) + Math.abs(dy));
+    const fiber = vnoise(u, v, 200);
+    const dirt = Math.pow(fbm(u + 0.6, v + 0.3, 6, 4), 2.6);
+    let r = 70, g = 16, b = 20;
+    r = mix(r, 142, diamond * 0.5); g = mix(g, 110, diamond * 0.35); b = mix(b, 50, diamond * 0.3);
+    const tone = mix(0.85, 1.1, fiber);
+    r *= tone; g *= tone; b *= tone;
+    r = mix(r, 18, dirt); g = mix(g, 8, dirt); b = mix(b, 9, dirt);
+    o.r = r; o.g = g; o.b = b;
+    o.h = fiber * 0.4 + diamond * 0.1;
+    o.rough = 0.97;
+  }, 1.2);
+}
+
+// Вечеринка: пастельные полосы с конфетти
+function partyWall() {
+  return bake(512, (u, v, o) => {
+    const stripeIdx = Math.floor(u * 10) % 2;
+    const palette = stripeIdx ? [228, 196, 120] : [212, 156, 168];
+    const mottle = fbm(u, v, 8, 3);
+    // конфетти: цветные кружки
+    const cu = Math.floor(u * 36), cv2 = Math.floor(v * 36);
+    const cell = vnoise((cu + 0.5) / 36, (cv2 + 0.5) / 36, 36);
+    const fx = u * 36 - cu - 0.5, fy = v * 36 - cv2 - 0.5;
+    const inDot = (Math.sqrt(fx * fx + fy * fy) < 0.18 && cell > 0.78) ? 1 : 0;
+    const dotCol = [[214, 70, 80], [70, 140, 200], [240, 190, 60], [110, 180, 90]][Math.floor(cell * 23) % 4];
+    const age = Math.pow(fbm(u + 0.2, v + 0.7, 5, 4), 3) * 0.9;
+    let r = palette[0] * mix(0.92, 1.05, mottle);
+    let g = palette[1] * mix(0.92, 1.05, mottle);
+    let b = palette[2] * mix(0.92, 1.05, mottle);
+    if (inDot) { r = dotCol[0]; g = dotCol[1]; b = dotCol[2]; }
+    r = mix(r, 60, age); g = mix(g, 44, age); b = mix(b, 30, age);
+    o.r = r; o.g = g; o.b = b;
+    o.h = 0.5 + mottle * 0.08 + inDot * 0.05 - age * 0.08;
+    o.rough = 0.9 - inDot * 0.3;
+  }, 1.0);
+}
+
+function partyFloor() {
+  return bake(384, (u, v, o) => {
+    // шахматный пол, потёртый
+    const cx = Math.floor(u * 8), cz = Math.floor(v * 8);
+    const isDark = (cx + cz) % 2 === 0;
+    const fx = u * 8 - cx, fy = v * 8 - cz;
+    const edge = Math.min(fx, 1 - fx, fy, 1 - fy);
+    const grout = 1 - step(0.01, 0.04, edge);
+    const wear = fbm(u, v, 7, 4);
+    let c = isDark ? 52 : 190;
+    c *= mix(0.85, 1.1, wear);
+    let r = c, g = c * 0.97, b = c * 0.92;
+    r = mix(r, 30, grout); g = mix(g, 28, grout); b = mix(b, 26, grout);
+    o.r = r; o.g = g; o.b = b;
+    o.h = 0.55 - grout * 0.4 + wear * 0.06;
+    o.rough = 0.35 + wear * 0.3;
+  }, 1.5);
+}
+
 // нормали воды (используется как скроллящийся normalMap)
 export function waterNormalTexture() {
   const maps = bake(256, (u, v, o) => {
@@ -355,7 +445,7 @@ export function themeMaterials(theme) {
       ceiling: setRepeat(std(ceilingTiles()), 22, 22),
       trim: new THREE.MeshStandardMaterial({ color: 0x6e5e2e, roughness: 0.7 }),
       lightColor: new THREE.Color(0xfff2b8),
-      lightIntensity: 26,
+      lightIntensity: 13,
     };
   } else if (theme === 'warehouse') {
     m = {
@@ -384,6 +474,24 @@ export function themeMaterials(theme) {
       trim: new THREE.MeshStandardMaterial({ color: 0x9fb4ae, roughness: 0.3 }),
       lightColor: new THREE.Color(0xd8f4f0),
       lightIntensity: 26,
+    };
+  } else if (theme === 'hotel') {
+    m = {
+      wall: setRepeat(std(hotelWall()), 1, 1),
+      floor: setRepeat(std(hotelCarpet()), 20, 20),
+      ceiling: new THREE.MeshStandardMaterial({ color: 0x2a1d16, roughness: 0.92 }),
+      trim: new THREE.MeshStandardMaterial({ color: 0x3a2415, roughness: 0.5 }),
+      lightColor: new THREE.Color(0xffd9a0),
+      lightIntensity: 11,
+    };
+  } else if (theme === 'party') {
+    m = {
+      wall: setRepeat(std(partyWall()), 1, 1),
+      floor: setRepeat(std(partyFloor()), 20, 20),
+      ceiling: new THREE.MeshStandardMaterial({ color: 0xd8d2c4, roughness: 0.9 }),
+      trim: new THREE.MeshStandardMaterial({ color: 0xc9b8d4, roughness: 0.6 }),
+      lightColor: new THREE.Color(0xffe9f0),
+      lightIntensity: 22,
     };
   } else {
     m = {

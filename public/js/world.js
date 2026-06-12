@@ -173,6 +173,10 @@ export class World {
       waterGeos.forEach(g => g.dispose());
     }
 
+    // ---- тематический декор ----
+    if (level.theme === 'hotel') this._buildHotelDoors(get, walkable, C, W, H);
+    if (level.theme === 'party') this._buildPartyDecor(walkable, C, W, H, ceilH);
+
     // ---- светильники ----
     this._buildFixtures(level, theme, ceilH);
 
@@ -190,6 +194,74 @@ export class World {
     // ---- предметы и выход ----
     for (const item of level.items) this._buildItem(item, theme, ceilH);
     this._buildExit(level, theme);
+  }
+
+  // двери номеров вдоль коридоров
+  _buildHotelDoors(get, walkable, C, W, H) {
+    const doorMat = new THREE.MeshStandardMaterial({ color: 0x4a2c16, roughness: 0.45 });
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x2a1a0c, roughness: 0.6 });
+    const knobMat = new THREE.MeshStandardMaterial({ color: 0xc8a850, roughness: 0.3, metalness: 0.9 });
+    const group = new THREE.Group();
+    let n = 0;
+    for (let z = 1; z < H - 1; z++) for (let x = 1; x < W - 1; x++) {
+      if (get(x, z) !== 1) continue;
+      if ((x * 7 + z * 13) % 4 !== 0) continue; // не на каждой стене
+      for (const [dx, dz, rot] of [[0, -1, 0], [0, 1, Math.PI], [-1, 0, Math.PI / 2], [1, 0, -Math.PI / 2]]) {
+        if (!walkable(x + dx, z + dz)) continue;
+        const d = new THREE.Group();
+        const door = new THREE.Mesh(new THREE.BoxGeometry(1.0, 2.1, 0.06), doorMat);
+        door.position.y = 1.05;
+        d.add(door);
+        const frame = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.25, 0.04), frameMat);
+        frame.position.y = 1.1;
+        frame.position.z = -0.02;
+        d.add(frame);
+        const knob = new THREE.Mesh(new THREE.SphereGeometry(0.045, 8, 8), knobMat);
+        knob.position.set(0.38, 1.02, 0.06);
+        d.add(knob);
+        const cx = (x + 0.5) * C + dx * (C / 2 + 0.04);
+        const cz = (z + 0.5) * C + dz * (C / 2 + 0.04);
+        d.position.set(cx, 0, cz);
+        d.rotation.y = rot;
+        group.add(d);
+        if (++n > 90) break;
+      }
+      if (n > 90) break;
+    }
+    this.group.add(group);
+  }
+
+  // гроздья шаров по углам комнат
+  _buildPartyDecor(walkable, C, W, H, ceilH) {
+    const group = new THREE.Group();
+    let placed = 0;
+    for (let i = 0; i < 400 && placed < 26; i++) {
+      const gx = 1 + Math.floor(Math.random() * (W - 2));
+      const gz = 1 + Math.floor(Math.random() * (H - 2));
+      if (!walkable(gx, gz)) continue;
+      placed++;
+      const cluster = new THREE.Group();
+      const cnt = 2 + Math.floor(Math.random() * 3);
+      for (let b = 0; b < cnt; b++) {
+        const col = new THREE.Color().setHSL(Math.random(), 0.7, 0.55);
+        const ball = new THREE.Mesh(
+          new THREE.SphereGeometry(0.22 + Math.random() * 0.08, 12, 10),
+          new THREE.MeshStandardMaterial({ color: col, roughness: 0.2 })
+        );
+        ball.scale.y = 1.15;
+        ball.position.set((Math.random() - 0.5) * 0.5, ceilH - 0.45 - Math.random() * 0.35, (Math.random() - 0.5) * 0.5);
+        cluster.add(ball);
+        const string = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.004, 0.004, ceilH - ball.position.y - 0.3),
+          new THREE.MeshStandardMaterial({ color: 0xcccccc })
+        );
+        string.position.set(ball.position.x, (ball.position.y + ceilH) / 2 - 0.12, ball.position.z);
+        cluster.add(string);
+      }
+      cluster.position.set((gx + 0.5) * C, 0, (gz + 0.5) * C);
+      group.add(cluster);
+    }
+    this.group.add(group);
   }
 
   _buildFixtures(level, theme, ceilH) {
@@ -377,6 +449,44 @@ export class World {
       mesh.add(wheel);
       mesh.userData.wheel = wheel;
       mesh.position.set(item.x, 0, item.z);
+    } else if (item.type === 'key') {
+      mesh = new THREE.Group();
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(0.09, 0.025, 8, 16),
+        new THREE.MeshStandardMaterial({ color: 0xd8b54a, roughness: 0.25, metalness: 0.9, emissive: 0x6a5418, emissiveIntensity: 0.5 })
+      );
+      mesh.add(ring);
+      const stem = new THREE.Mesh(
+        new THREE.BoxGeometry(0.035, 0.2, 0.02),
+        ring.material
+      );
+      stem.position.y = -0.17;
+      mesh.add(stem);
+      const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.035, 0.02), ring.material);
+      tooth.position.set(0.03, -0.25, 0);
+      mesh.add(tooth);
+      mesh.position.set(item.x, 1.0, item.z);
+      mesh.userData.bob = true;
+      mesh.userData.bobBase = 1.0;
+    } else if (item.type === 'balloon') {
+      mesh = new THREE.Group();
+      const hue = (item.id.charCodeAt(item.id.length - 1) * 53) % 360;
+      const col = new THREE.Color().setHSL(hue / 360, 0.75, 0.55);
+      const ball = new THREE.Mesh(
+        new THREE.SphereGeometry(0.26, 16, 14),
+        new THREE.MeshStandardMaterial({ color: col, roughness: 0.18, emissive: col, emissiveIntensity: 0.18 })
+      );
+      ball.scale.y = 1.18;
+      mesh.add(ball);
+      const string = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.005, 0.005, 1.1),
+        new THREE.MeshStandardMaterial({ color: 0xdddddd, roughness: 0.8 })
+      );
+      string.position.y = -0.82;
+      mesh.add(string);
+      mesh.position.set(item.x, 1.5, item.z);
+      mesh.userData.bob = true;
+      mesh.userData.bobBase = 1.5;
     } else if (item.type === 'switch') {
       mesh = new THREE.Group();
       const body = new THREE.Mesh(
@@ -491,7 +601,8 @@ export class World {
     // покачивание подбираемых предметов
     for (const mesh of this.itemMeshes.values()) {
       if (mesh.userData.bob && mesh.visible) {
-        mesh.position.y = 0.5 + Math.sin(this.time * 2 + mesh.position.x) * 0.07;
+        const base = mesh.userData.bobBase ?? 0.5;
+        mesh.position.y = base + Math.sin(this.time * 2 + mesh.position.x) * 0.07;
         mesh.rotation.y += dt * 1.2;
       }
     }

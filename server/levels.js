@@ -219,6 +219,39 @@ function genPools(rng, w, h) {
   return g;
 }
 
+// Отель: сетка коридоров, по сторонам — номера с узкими дверями
+function genHotel(rng, w, h) {
+  const g = new Grid(w, h, WALL);
+  const corrZ = [], corrX = [];
+  for (let z = 3; z < h - 3; z += 8) corrZ.push(z);
+  for (let x = 3; x < w - 3; x += 10) corrX.push(x);
+  for (const z of corrZ) for (let x = 1; x < w - 1; x++) g.set(x, z, FLOOR);
+  for (const x of corrX) for (let z = 1; z < h - 1; z++) g.set(x, z, FLOOR);
+  // номера над и под горизонтальными коридорами
+  for (const z of corrZ) {
+    for (let x = 2; x < w - 5; x += 5) {
+      for (const side of [-1, 1]) {
+        const rz = z + side * 2;
+        if (rz < 1 || rz + 2 > h - 1) continue;
+        if (rng() < 0.75) {
+          // комната 3x3
+          for (let dz = 0; dz < 3; dz++) for (let dx = 0; dx < 3; dx++) {
+            const cz = z + side * (2 + dz);
+            if (cz > 0 && cz < h - 1) g.set(x + dx, cz, FLOOR);
+          }
+          g.set(x + 1, z + side, FLOOR); // дверной проём
+        }
+      }
+    }
+  }
+  return g;
+}
+
+// Праздничные залы: большие комнаты с широкими проёмами
+function genParty(rng, w, h) {
+  return genRoomMaze(rng, w, h, 8, 0.8, 0.012);
+}
+
 // Финальный коридор
 function genFinal(rng, len) {
   const w = len, h = 11;
@@ -361,8 +394,46 @@ function genLevel(index, seed) {
       puzzle: { kind: 'valves', need: 3, holdTime: 3 },
       ceilH: 4.2, fog: { color: 0xbfd4d6, density: 0.045 }, ambient: 0.55,
     };
+  } else if (index === 4) {
+    // УРОВЕНЬ 5 — ОТЕЛЬ УЖАСА. Сущность: Отверженный (видит в коридорах).
+    grid = genHotel(rng, 47, 47);
+    const spawn = findSpawn(grid, rng);
+    ensureConnected(grid, spawn.gx, spawn.gz);
+    const far = farthestCell(grid, spawn.gx, spawn.gz);
+    const exit = toWorld(far.x, far.z);
+    const cands = cellsBeyond(grid, spawn.gx, spawn.gz, 16);
+    const keys = pickSpread(rng, cands, 3, 18);
+    const items = keys.map((c, i) => ({ id: 'key' + i, type: 'key', ...toWorld(c.x, c.z) }));
+    level = {
+      name: 'УРОВЕНЬ 5 — ОТЕЛЬ УЖАСА',
+      hint: 'Найдите 3 ключа в номерах, чтобы вызвать лифт. Отверженный патрулирует коридоры и видит далеко — прячьтесь в номерах и не попадайтесь ему на глаза.',
+      theme: 'hotel', grid, spawn, exit, items,
+      lights: placeLights(rng, grid, 6, 2, 0.35),
+      entity: { type: 'wretch' },
+      puzzle: { kind: 'collect', itemType: 'key', need: 3 },
+      ceilH: 3.0, fog: { color: 0x160a08, density: 0.075 }, ambient: 0.16,
+    };
+  } else if (index === 5) {
+    // УРОВЕНЬ FUN =) — Партигёрл. Замирает, пока на него смотрят.
+    grid = genParty(rng, 46, 46);
+    const spawn = findSpawn(grid, rng);
+    ensureConnected(grid, spawn.gx, spawn.gz);
+    const far = farthestCell(grid, spawn.gx, spawn.gz);
+    const exit = toWorld(far.x, far.z);
+    const cands = cellsBeyond(grid, spawn.gx, spawn.gz, 12);
+    const balloons = pickSpread(rng, cands, 5, 12);
+    const items = balloons.map((c, i) => ({ id: 'balloon' + i, type: 'balloon', ...toWorld(c.x, c.z) }));
+    level = {
+      name: 'УРОВЕНЬ FUN =) — ВЕЧЕРИНКА',
+      hint: 'Соберите 5 шариков, чтобы «отпраздновать» и открыть выход. Партигёрл замирает, пока хоть кто-то СМОТРИТ на него. Отвернётесь — он приближается. =)',
+      theme: 'party', grid, spawn, exit, items,
+      lights: placeLights(rng, grid, 5, 2, 0.06),
+      entity: { type: 'partygoer' },
+      puzzle: { kind: 'collect', itemType: 'balloon', need: 5 },
+      ceilH: 3.4, fog: { color: 0xc9b09a, density: 0.05 }, ambient: 0.55,
+    };
   } else {
-    // УРОВЕНЬ 4 — ИСХОД. Финальная погоня.
+    // УРОВЕНЬ 6 — ИСХОД. Финальная погоня.
     grid = genFinal(rng, 64);
     const spawn = { gx: 2, gz: 5, ...toWorld(2, 5) };
     const exit = toWorld(62, 5);
@@ -375,7 +446,7 @@ function genLevel(index, seed) {
       items.push({ id: 'switch' + i, type: 'switch', ...toWorld(x, gz) });
     });
     level = {
-      name: 'УРОВЕНЬ 4 — ИСХОД',
+      name: 'УРОВЕНЬ 6 — ИСХОД',
       hint: 'Включите 4 рубильника вдоль коридора и доберитесь до лифта. НЕ ОСТАНАВЛИВАЙТЕСЬ. ОНО УЖЕ ЗДЕСЬ.',
       theme: 'final', grid, spawn, exit, items,
       // лампы вручную вдоль коридора — он слишком узкий для сетки placeLights
@@ -433,6 +504,6 @@ function serializeLevel(level) {
   };
 }
 
-const LEVEL_COUNT = 5;
+const LEVEL_COUNT = 7;
 
 module.exports = { genLevel, serializeLevel, LEVEL_COUNT, CELL, FLOOR, WALL, WATER, bfsDistances };

@@ -37,6 +37,8 @@ let inGame = false;
 let nearLocker = null;
 let lastWhisper = 0;
 let entityState = { x: -999, z: -999, state: 'roam' };
+let doorOpenClient = false;
+let seenPlates = new Set(); // таблички с символами, которые игрок уже видел
 
 // ---------- меню ----------
 
@@ -132,10 +134,11 @@ net.on('puzzle', (m) => {
 });
 
 net.on('door', () => {
+  doorOpenClient = true;
   world.setDoorOpen();
   audio.doorOpen();
   UI.subtitles('что-то открылось...');
-  UI.setObjective('ВЫХОД ОТКРЫТ', 'Доберитесь до светящегося портала ВДВОЁМ.');
+  updateInventoryUI();
 });
 
 net.on('reaper', () => {
@@ -284,6 +287,8 @@ function loadLevel(data) {
   level = data;
   puzzleState = null;
   carriedFuses = 0;
+  doorOpenClient = false;
+  seenPlates = new Set();
   nearLocker = null;
   glyphPanelVisible = false;
   UI.glyphPanel(false);
@@ -309,7 +314,6 @@ function loadLevel(data) {
   player.light = false;
 
   audio.startAmbient(data.theme);
-  UI.setObjective(data.name, data.hint);
   updateInventoryUI();
   UI.setPartnerInfo(`напарник: ${partnerName}`);
 
@@ -323,20 +327,48 @@ function loadLevel(data) {
 function updateInventoryUI() {
   if (!level) return;
   const pk = level.puzzle.kind;
+  const tasks = [];
+  const exitTask = (text) => tasks.push({
+    text, done: false, active: doorOpenClient,
+  });
+
   if (pk === 'fuses') {
     const ins = puzzleState?.inserted || 0;
-    UI.setInventory(`Предохранители при себе: ${carriedFuses} · В щитке: ${ins}/3`);
+    const found = ins + Object.values(puzzleState?.carried || {}).reduce((a, b) => a + b, 0);
+    tasks.push({ text: 'Найти предохранители', progress: [found, 3], done: found >= 3, active: found < 3 });
+    tasks.push({ text: 'Вставить в щиток у выхода', progress: [ins, 3], done: ins >= 3, active: found >= 3 && ins < 3 });
+    exitTask('Войти в портал ВДВОЁМ');
+    UI.setInventory(carriedFuses > 0 ? `При себе предохранителей: ${carriedFuses}` : '');
   } else if (pk === 'levers') {
-    UI.setInventory('Рычаги нужно дёрнуть одновременно (окно 6 сек)');
+    const pulled = puzzleState?.pulled?.length || 0;
+    const ok = doorOpenClient;
+    tasks.push({ text: 'Дёрнуть ОБА рычага с разницей < 6 сек', progress: [ok ? 2 : pulled, 2], done: ok, active: !ok });
+    exitTask('Уйти через ворота ВДВОЁМ');
+    UI.setInventory('Разделитесь: рычаги в разных концах склада');
   } else if (pk === 'glyphs') {
-    UI.setInventory('Найдите 4 таблички с символами');
+    tasks.push({ text: 'Найти таблички с символами', progress: [seenPlates.size, 4], done: seenPlates.size >= 4 || doorOpenClient, active: seenPlates.size < 4 && !doorOpenClient });
+    tasks.push({ text: 'Ввести код на панели у двери', done: doorOpenClient, active: seenPlates.size >= 4 && !doorOpenClient });
+    exitTask('Выйти ВДВОЁМ');
+    UI.setInventory('');
   } else if (pk === 'valves') {
     const done = puzzleState?.done?.length || 0;
-    UI.setInventory(`Вентили: ${done}/3`);
+    tasks.push({ text: 'Открыть вентили (держать E)', progress: [done, 3], done: done >= 3, active: done < 3 });
+    exitTask('Дойти до шлюза ВДВОЁМ');
+    UI.setInventory('Остерегайтесь двойника: настоящий напарник отвечает на [Q]');
+  } else if (pk === 'collect') {
+    const got = puzzleState?.got?.length || 0;
+    const need = level.puzzle.need;
+    const what = level.puzzle.itemType === 'key' ? 'Найти ключи в номерах' : 'Собрать шарики';
+    tasks.push({ text: what, progress: [got, need], done: got >= need, active: got < need });
+    exitTask(level.puzzle.itemType === 'key' ? 'Дойти до лифта ВДВОЁМ' : 'Выйти через портал ВДВОЁМ');
+    UI.setInventory('');
   } else if (pk === 'switches') {
     const done = puzzleState?.done?.length || 0;
-    UI.setInventory(`Рубильники: ${done}/4`);
+    tasks.push({ text: 'Включить рубильники', progress: [done, 4], done: done >= 4, active: done < 4 });
+    exitTask('ДОБЕЖАТЬ до лифта ВДВОЁМ');
+    UI.setInventory('НЕ ОСТАНАВЛИВАЙТЕСЬ');
   }
+  UI.setTasks(level.name, tasks);
 }
 
 // ---------- взаимодействие ----------
@@ -433,6 +465,19 @@ function loop(t) {
   world.update(dt, player.pos);
   partner.update(dt);
   if (entityView) entityView.update(dt, player.pos);
+
+  // отмечаем таблички, к которым подошли
+  if (level.puzzle.kind === 'glyphs') {
+    for (const item of level.items) {
+      if (item.type !== 'plate' || seenPlates.has(item.id)) continue;
+      const d2p = (item.x - player.pos.x) ** 2 + (item.z - player.pos.z) ** 2;
+      if (d2p < 3 * 3) {
+        seenPlates.add(item.id);
+        audio.uiTick();
+        updateInventoryUI();
+      }
+    }
+  }
 
   // панель глифов видна рядом с панелью
   if (level.puzzle.kind === 'glyphs') {

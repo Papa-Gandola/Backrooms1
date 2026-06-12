@@ -87,6 +87,12 @@ async function completeLevel(a, b) {
       b.moveTo(v.x, v.z); await sleep(120);
       b.send({ t: 'interact', id: v.id }); await sleep(120);
     }
+  } else if (lv.puzzle.kind === 'collect') {
+    const things = items.filter(i => i.type === lv.puzzle.itemType);
+    for (const it of things) {
+      a.moveTo(it.x, it.z); await sleep(120);
+      a.send({ t: 'interact', id: it.id }); await sleep(120);
+    }
   } else if (lv.puzzle.kind === 'switches') {
     const sws = items.filter(i => i.type === 'switch');
     for (const s of sws) {
@@ -101,7 +107,7 @@ async function completeLevel(a, b) {
   log(`дверь открыта (${lv.puzzle.kind})`);
 
   // оба идут к выходу; повторяем state, пока не придёт descend/victory
-  const isLast = lv.index === 4;
+  const isLast = lv.index === 6;
   const done = (isLast ? a.wait('victory', 30000) : a.wait('descend', 30000));
   const pump = setInterval(() => {
     if (!a.dead) a.moveTo(lv.exit.x, lv.exit.z);
@@ -131,7 +137,7 @@ async function completeLevel(a, b) {
   await a.wait('level');
   await sleep(200); // b тоже получает level
 
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 7; i++) {
     if (!a.level || a.level.index !== i) {
       await a.wait('level');
       await sleep(200);

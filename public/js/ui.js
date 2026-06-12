@@ -13,6 +13,16 @@ export const UI = {
     $('objective').innerHTML = `<div class="obj-title">${title}</div>${text}`;
   },
 
+  // Чеклист задач уровня: [{ text, done, active, progress: [есть, нужно] }]
+  setTasks(title, tasks) {
+    const items = tasks.map(t => {
+      const cls = t.done ? 'done' : (t.active ? 'active' : '');
+      const prog = t.progress ? ` <span class="task-progress">${t.progress[0]}/${t.progress[1]}</span>` : '';
+      return `<li class="${cls}">${t.text}${prog}</li>`;
+    }).join('');
+    $('objective').innerHTML = `<div class="obj-title">${title}</div><ul class="task-list">${items}</ul>`;
+  },
+
   setInventory(text) { $('inventory').textContent = text; },
   setPartnerInfo(text) { $('partnerInfo').textContent = text; },
 
@@ -126,6 +136,41 @@ export const UI = {
         ctx.fillStyle = '#1a1208';
         for (const sx of [-1, 1]) {
           ctx.beginPath(); ctx.ellipse(sx * 95, -90, 38, 50, 0, 0, Math.PI * 2); ctx.fill();
+        }
+      } else if (entityType === 'partygoer') {
+        // жёлтая рожа =) во весь экран
+        ctx.fillStyle = '#e8c83a';
+        ctx.beginPath(); ctx.ellipse(0, 0, 250, 260, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#1a1208';
+        for (const sx of [-1, 1]) {
+          ctx.beginPath(); ctx.ellipse(sx * 90, -80, 28, 44, 0, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.strokeStyle = '#1a1208'; ctx.lineWidth = 26; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.arc(0, 10, 150, 0.2 * Math.PI, 0.8 * Math.PI); ctx.stroke();
+        // подтёки краски
+        ctx.strokeStyle = 'rgba(120,40,20,0.5)'; ctx.lineWidth = 8;
+        for (let i = -3; i <= 3; i++) {
+          ctx.beginPath(); ctx.moveTo(i * 60, -240); ctx.lineTo(i * 60 + 10, -140 + Math.random() * 60); ctx.stroke();
+        }
+      } else if (entityType === 'wretch') {
+        // красная безглазая морда с распахнутым ртом
+        ctx.fillStyle = '#8f2a20';
+        ctx.beginPath(); ctx.ellipse(0, 0, 215, 290, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#eadfd0';
+        ctx.shadowColor = '#fff'; ctx.shadowBlur = 30;
+        for (const sx of [-1, 1]) {
+          ctx.beginPath(); ctx.ellipse(sx * 85, -85, 40, 26, 0, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#170503';
+        ctx.beginPath(); ctx.ellipse(0, 130, 110, 150 + Math.random() * 15, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = 'rgba(40,8,5,0.8)'; ctx.lineWidth = 4;
+        for (let i = 0; i < 7; i++) {
+          ctx.beginPath();
+          let x = (Math.random() - 0.5) * 320, y = -290;
+          ctx.moveTo(x, y);
+          for (let s2 = 0; s2 < 5; s2++) { x += (Math.random() - 0.5) * 70; y += 70; ctx.lineTo(x, y); }
+          ctx.stroke();
         }
       } else if (entityType === 'skinstealer') {
         ctx.fillStyle = '#c9a98c';

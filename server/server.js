@@ -17,7 +17,7 @@ app.use('/vendor/three', express.static(path.join(__dirname, '..', 'node_modules
 // отладка: выдать сгенерированный уровень без игры (для /debug-world.html)
 const { genLevel, serializeLevel } = require('./levels');
 app.get('/debug-level', (req, res) => {
-  const index = Math.min(4, Math.max(0, parseInt(req.query.index || '0', 10)));
+  const index = Math.min(6, Math.max(0, parseInt(req.query.index || '0', 10)));
   const seed = parseInt(req.query.seed || '12345', 10);
   res.json(serializeLevel(genLevel(index, seed)));
 });
