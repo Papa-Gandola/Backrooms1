@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { buildHumanoid } from './avatar.js';
 import { smilerTexture } from './textures.js';
+import { fleshMaterial, clothMaterial, gnarl } from './materials.js';
 
 export class EntityView {
   constructor(scene, type, partnerName) {
@@ -29,7 +30,7 @@ export class EntityView {
 
   // Скиталец: истощённый чёрный гигант (~2.4 м) с горящими жёлтыми глазами
   _buildWanderer(g) {
-    const mat = new THREE.MeshStandardMaterial({ color: 0x111114, roughness: 0.95 });
+    const mat = fleshMaterial(0x1a1a20, 0x0c0c10, 0.5);
     const body = new THREE.Group();
     body.rotation.x = 0.13; // сгорбленность
     g.add(body);
@@ -37,15 +38,15 @@ export class EntityView {
 
     // ноги
     for (const sx of [-1, 1]) {
-      const leg = new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 1.0, 4, 8), mat);
+      const leg = new THREE.Mesh(gnarl(new THREE.CapsuleGeometry(0.07, 1.0, 6, 14), 0.022, 11, sx), mat);
       leg.position.set(sx * 0.11, 0.6, 0);
       body.add(leg);
     }
     // таз и торс
-    const hips = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), mat);
+    const hips = new THREE.Mesh(gnarl(new THREE.SphereGeometry(0.17, 14, 12), 0.03, 8, 3), mat);
     hips.position.y = 1.15; hips.scale.set(1, 0.7, 0.8);
     body.add(hips);
-    const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.16, 0.75, 4, 10), mat);
+    const torso = new THREE.Mesh(gnarl(new THREE.CapsuleGeometry(0.16, 0.75, 8, 18), 0.035, 9, 5), mat);
     torso.position.y = 1.65; torso.scale.set(1.15, 1, 0.75);
     body.add(torso);
     // выпирающие рёбра
@@ -62,7 +63,7 @@ export class EntityView {
       arm.position.set(sx * 0.25, 2.05, 0);
       const sh = new THREE.Mesh(new THREE.SphereGeometry(0.085, 8, 6), mat);
       arm.add(sh);
-      const limb = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 1.15, 4, 8), mat);
+      const limb = new THREE.Mesh(gnarl(new THREE.CapsuleGeometry(0.05, 1.15, 6, 12), 0.02, 13, sx * 7), mat);
       limb.position.y = -0.65;
       arm.add(limb);
       // когти
@@ -80,7 +81,7 @@ export class EntityView {
     const neck = new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.18, 4, 6), mat);
     neck.position.y = 2.3;
     body.add(neck);
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), mat);
+    const head = new THREE.Mesh(gnarl(new THREE.SphereGeometry(0.13, 18, 14), 0.025, 12, 9), mat);
     head.position.y = 2.52; head.scale.set(0.85, 1.5, 0.9);
     body.add(head);
     this.head = head;
@@ -102,21 +103,21 @@ export class EntityView {
 
   // Гончая: безглазый ободранный четвероногий хищник
   _buildHound(g) {
-    const skin = new THREE.MeshStandardMaterial({ color: 0x9a8d7d, roughness: 0.9 });
-    const raw = new THREE.MeshStandardMaterial({ color: 0x5e2520, roughness: 0.75 });
+    const skin = fleshMaterial(0x9a8d7d, 0x6e3a34, 0.35);
+    const raw = fleshMaterial(0x5e2520, 0x3f1612, 0.25);
     const body = new THREE.Group();
     g.add(body);
     this.body = body;
 
     // корпус вдоль +Z: грудь впереди, круп сзади
-    const spine = new THREE.Mesh(new THREE.CapsuleGeometry(0.17, 0.7, 4, 10), skin);
+    const spine = new THREE.Mesh(gnarl(new THREE.CapsuleGeometry(0.17, 0.7, 8, 16), 0.03, 10, 2), skin);
     spine.rotation.x = Math.PI / 2;
     spine.position.set(0, 0.62, 0);
     body.add(spine);
-    const chest = new THREE.Mesh(new THREE.SphereGeometry(0.21, 10, 8), skin);
+    const chest = new THREE.Mesh(gnarl(new THREE.SphereGeometry(0.21, 14, 12), 0.035, 8, 4), skin);
     chest.position.set(0, 0.64, 0.32); chest.scale.set(1, 1.05, 1.2);
     body.add(chest);
-    const rump = new THREE.Mesh(new THREE.SphereGeometry(0.17, 10, 8), skin);
+    const rump = new THREE.Mesh(gnarl(new THREE.SphereGeometry(0.17, 14, 12), 0.03, 9, 6), skin);
     rump.position.set(0, 0.66, -0.36); rump.scale.set(0.9, 1, 1.2);
     body.add(rump);
     // позвонки, торчащие вдоль хребта
@@ -129,7 +130,7 @@ export class EntityView {
     const neck = new THREE.Mesh(new THREE.CapsuleGeometry(0.09, 0.22, 4, 8), skin);
     neck.position.set(0, 0.76, 0.52); neck.rotation.x = Math.PI / 2 - 0.5;
     body.add(neck);
-    const skull = new THREE.Mesh(new THREE.SphereGeometry(0.115, 10, 8), skin);
+    const skull = new THREE.Mesh(gnarl(new THREE.SphereGeometry(0.115, 16, 12), 0.02, 14, 8), skin);
     skull.position.set(0, 0.88, 0.68); skull.scale.set(0.85, 0.8, 1.5);
     body.add(skull);
     const maw = new THREE.Group();
@@ -201,12 +202,12 @@ export class EntityView {
 
   // Жнец: парящая рваная фигура с алым свечением
   _buildReaper(g) {
-    const mat = new THREE.MeshStandardMaterial({ color: 0x070708, roughness: 1.0 });
+    const mat = clothMaterial(0x0b0b0e);
     const body = new THREE.Group();
     g.add(body);
     this.body = body;
 
-    const robe = new THREE.Mesh(new THREE.ConeGeometry(0.46, 2.0, 9), mat);
+    const robe = new THREE.Mesh(gnarl(new THREE.ConeGeometry(0.46, 2.0, 18, 8), 0.05, 5, 1), mat);
     robe.position.y = 1.0;
     body.add(robe);
     // плечи, соединяющие балахон с капюшоном

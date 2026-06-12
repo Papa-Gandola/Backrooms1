@@ -1,8 +1,10 @@
-// Построение уровня из данных сервера: геометрия, материалы по теме, свет, предметы.
+// Построение уровня из данных сервера: PBR-материалы, геометрия с деталями
+// (плинтусы, утопленные светильники, трубы), пыль в воздухе, вода.
 
 import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
-import * as TEX from './textures.js';
+import { themeMaterials, waterNormalTexture } from './materials.js';
+import { plateTexture } from './textures.js';
 
 const FLOOR = 0, WALL = 1, WATER = 2;
 
@@ -13,27 +15,22 @@ export class World {
     this.grid = null;
     this.level = null;
     this.itemMeshes = new Map();
-    this.fixtures = [];        // световые точки {x,z,broken,flicker,mesh}
-    this.lightPool = [];       // переиспользуемые PointLight'ы
+    this.fixtures = [];
+    this.lightPool = [];
     this.exitMesh = null;
     this.doorOpen = false;
     this.time = 0;
+    this.dust = null;
   }
 
   clear() {
     if (this.group) {
       this.scene.remove(this.group);
-      this.group.traverse(o => {
-        if (o.geometry) o.geometry.dispose();
-        if (o.material) {
-          (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => {
-            if (m.map) m.map.dispose();
-            m.dispose();
-          });
-        }
-      });
+      // материалы тем кэшируются в materials.js — освобождаем только геометрию
+      this.group.traverse(o => { if (o.geometry) o.geometry.dispose(); });
     }
     for (const l of this.lightPool) this.scene.remove(l);
+    if (this.dust) { this.scene.remove(this.dust); this.dust.geometry.dispose(); this.dust = null; }
     this.group = null;
     this.itemMeshes.clear();
     this.fixtures = [];
@@ -49,15 +46,17 @@ export class World {
     this.group = new THREE.Group();
     this.scene.add(this.group);
 
-    const theme = this._themeMaterials(level.theme);
+    const theme = themeMaterials(level.theme);
     this.theme = theme;
     const C = level.cell, W = level.w, H = level.h, ceilH = level.ceilH;
+    const get = (x, z) => (x < 0 || z < 0 || x >= W || z >= H) ? WALL : cells[z * W + x];
+    const walkable = (x, z) => { const c = get(x, z); return c === FLOOR || c === WATER; };
 
     // ---- пол и потолок ----
-    const floorGeo = new THREE.PlaneGeometry(W * C, H * C);
-    const floor = new THREE.Mesh(floorGeo, theme.floor);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(W * C, H * C), theme.floor);
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(W * C / 2, 0, H * C / 2);
+    floor.receiveShadow = true;
     this.group.add(floor);
 
     const ceil = new THREE.Mesh(new THREE.PlaneGeometry(W * C, H * C), theme.ceiling);
@@ -65,18 +64,14 @@ export class World {
     ceil.position.set(W * C / 2, ceilH, H * C / 2);
     this.group.add(ceil);
 
-    // ---- стены (объединённая геометрия) ----
+    // ---- стены ----
     const wallGeos = [];
-    const get = (x, z) => (x < 0 || z < 0 || x >= W || z >= H) ? WALL : cells[z * W + x];
     for (let z = 0; z < H; z++) {
       for (let x = 0; x < W; x++) {
         if (get(x, z) !== WALL) continue;
-        // стену рисуем только если рядом есть проходимая клетка
         let near = false;
-        for (const [dx, dz] of [[1,0],[-1,0],[0,1],[0,-1]]) {
-          const c = get(x + dx, z + dz);
-          if (c === FLOOR || c === WATER) { near = true; break; }
-        }
+        for (const [dx, dz] of [[1,0],[-1,0],[0,1],[0,-1]])
+          if (walkable(x + dx, z + dz)) { near = true; break; }
         if (!near) continue;
         const g = new THREE.BoxGeometry(C, ceilH, C);
         g.translate((x + 0.5) * C, ceilH / 2, (z + 0.5) * C);
@@ -84,10 +79,72 @@ export class World {
       }
     }
     if (wallGeos.length) {
-      const merged = BufferGeometryUtils.mergeGeometries(wallGeos);
-      const walls = new THREE.Mesh(merged, theme.wall);
+      const walls = new THREE.Mesh(BufferGeometryUtils.mergeGeometries(wallGeos), theme.wall);
+      walls.receiveShadow = true;
+      walls.castShadow = true;
       this.group.add(walls);
       wallGeos.forEach(g => g.dispose());
+    }
+
+    // ---- плинтусы вдоль открытых граней стен ----
+    const trimGeos = [];
+    const trimH = 0.13, trimD = 0.035;
+    for (let z = 0; z < H; z++) {
+      for (let x = 0; x < W; x++) {
+        if (get(x, z) !== WALL) continue;
+        const cx = (x + 0.5) * C, cz = (z + 0.5) * C;
+        if (walkable(x, z - 1)) {
+          const g = new THREE.BoxGeometry(C, trimH, trimD);
+          g.translate(cx, trimH / 2, z * C - trimD / 2);
+          trimGeos.push(g);
+        }
+        if (walkable(x, z + 1)) {
+          const g = new THREE.BoxGeometry(C, trimH, trimD);
+          g.translate(cx, trimH / 2, (z + 1) * C + trimD / 2);
+          trimGeos.push(g);
+        }
+        if (walkable(x - 1, z)) {
+          const g = new THREE.BoxGeometry(trimD, trimH, C);
+          g.translate(x * C - trimD / 2, trimH / 2, cz);
+          trimGeos.push(g);
+        }
+        if (walkable(x + 1, z)) {
+          const g = new THREE.BoxGeometry(trimD, trimH, C);
+          g.translate((x + 1) * C + trimD / 2, trimH / 2, cz);
+          trimGeos.push(g);
+        }
+      }
+    }
+    if (trimGeos.length) {
+      this.group.add(new THREE.Mesh(BufferGeometryUtils.mergeGeometries(trimGeos), theme.trim));
+      trimGeos.forEach(g => g.dispose());
+    }
+
+    // ---- трубы вдоль стен (тема pipes) ----
+    if (level.theme === 'pipes') {
+      const pipeGeos = [];
+      const addPipe = (x0, z0, x1, z1, y, r) => {
+        const len = Math.hypot(x1 - x0, z1 - z0);
+        const g = new THREE.CylinderGeometry(r, r, len, 8);
+        g.rotateZ(Math.PI / 2);
+        const ang = Math.atan2(z1 - z0, x1 - x0);
+        g.rotateY(-ang);
+        g.translate((x0 + x1) / 2, y, (z0 + z1) / 2);
+        pipeGeos.push(g);
+      };
+      const off = 0.16;
+      for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) {
+        if (get(x, z) !== WALL) continue;
+        if (walkable(x, z - 1)) { addPipe(x * C, z * C - off, (x + 1) * C, z * C - off, 0.55, 0.09); addPipe(x * C, z * C - off, (x + 1) * C, z * C - off, 1.85, 0.12); }
+        if (walkable(x, z + 1)) { addPipe(x * C, (z + 1) * C + off, (x + 1) * C, (z + 1) * C + off, 0.55, 0.09); addPipe(x * C, (z + 1) * C + off, (x + 1) * C, (z + 1) * C + off, 1.85, 0.12); }
+        if (walkable(x - 1, z)) { addPipe(x * C - off, z * C, x * C - off, (z + 1) * C, 0.55, 0.09); addPipe(x * C - off, z * C, x * C - off, (z + 1) * C, 1.85, 0.12); }
+        if (walkable(x + 1, z)) { addPipe((x + 1) * C + off, z * C, (x + 1) * C + off, (z + 1) * C, 0.55, 0.09); addPipe((x + 1) * C + off, z * C, (x + 1) * C + off, (z + 1) * C, 1.85, 0.12); }
+      }
+      if (pipeGeos.length) {
+        const pipeMat = new THREE.MeshStandardMaterial({ color: 0x4a3625, roughness: 0.55, metalness: 0.7 });
+        this.group.add(new THREE.Mesh(BufferGeometryUtils.mergeGeometries(pipeGeos), pipeMat));
+        pipeGeos.forEach(g => g.dispose());
+      }
     }
 
     // ---- вода ----
@@ -96,89 +153,126 @@ export class World {
       if (get(x, z) === WATER) {
         const g = new THREE.PlaneGeometry(C, C);
         g.rotateX(-Math.PI / 2);
-        g.translate((x + 0.5) * C, 0.12, (z + 0.5) * C);
+        g.translate((x + 0.5) * C, 0.14, (z + 0.5) * C);
         waterGeos.push(g);
       }
     }
     if (waterGeos.length) {
-      const merged = BufferGeometryUtils.mergeGeometries(waterGeos);
-      this.waterMesh = new THREE.Mesh(merged, new THREE.MeshStandardMaterial({
-        map: TEX.waterTexture(), transparent: true, opacity: 0.72,
-        roughness: 0.15, metalness: 0.1,
-      }));
+      const wn = waterNormalTexture();
+      wn.repeat.set(3, 3);
+      this.waterMesh = new THREE.Mesh(
+        BufferGeometryUtils.mergeGeometries(waterGeos),
+        new THREE.MeshStandardMaterial({
+          color: 0x2e6e74, transparent: true, opacity: 0.7,
+          roughness: 0.06, metalness: 0.0,
+          normalMap: wn, normalScale: new THREE.Vector2(0.35, 0.35),
+          envMapIntensity: 1.6,
+        })
+      );
       this.group.add(this.waterMesh);
       waterGeos.forEach(g => g.dispose());
     }
 
-    // ---- световые плафоны ----
-    const fixtureGeo = level.theme === 'pipes'
-      ? new THREE.SphereGeometry(0.14, 8, 6)
-      : new THREE.BoxGeometry(1.3, 0.08, 0.7);
-    for (const li of level.lights) {
-      const on = !li.broken;
-      const mat = new THREE.MeshStandardMaterial({
-        color: 0x222222,
-        emissive: theme.lightColor,
-        emissiveIntensity: on ? 0.85 : 0.0,
-      });
-      const m = new THREE.Mesh(fixtureGeo.clone(), mat);
-      m.position.set(li.x, ceilH - 0.08, li.z);
-      this.group.add(m);
-      this.fixtures.push({ x: li.x, z: li.z, broken: li.broken, flicker: li.flicker, mesh: m, phase: Math.random() * 100 });
-    }
+    // ---- светильники ----
+    this._buildFixtures(level, theme, ceilH);
 
     // пул реальных источников света — двигаем к ближайшим плафонам
-    const poolSize = 7;
-    for (let i = 0; i < poolSize; i++) {
+    for (let i = 0; i < 7; i++) {
       const pl = new THREE.PointLight(theme.lightColor, 0, 18, 1.8);
       pl.position.y = ceilH - 0.7;
       this.scene.add(pl);
       this.lightPool.push(pl);
     }
 
-    // ---- предметы ----
-    for (const item of level.items) this._buildItem(item, theme, ceilH);
+    // ---- пыль в воздухе ----
+    this._buildDust();
 
-    // ---- выход ----
+    // ---- предметы и выход ----
+    for (const item of level.items) this._buildItem(item, theme, ceilH);
     this._buildExit(level, theme);
   }
 
-  _themeMaterials(theme) {
-    if (theme === 'yellow') return {
-      wall: new THREE.MeshStandardMaterial({ map: TEX.wallpaperTexture(), roughness: 0.92 }),
-      floor: new THREE.MeshStandardMaterial({ map: TEX.carpetTexture(), roughness: 1.0 }),
-      ceiling: new THREE.MeshStandardMaterial({ map: TEX.ceilingTexture(), roughness: 0.95 }),
-      lightColor: new THREE.Color(0xfff2b8),
-      lightIntensity: 24,
-    };
-    if (theme === 'warehouse') return {
-      wall: new THREE.MeshStandardMaterial({ map: TEX.metalWallTexture(), roughness: 0.7, metalness: 0.45 }),
-      floor: new THREE.MeshStandardMaterial({ map: TEX.concreteTexture(), roughness: 0.95 }),
-      ceiling: new THREE.MeshStandardMaterial({ color: 0x16181c, roughness: 0.9 }),
-      lightColor: new THREE.Color(0xbfd4ff),
-      lightIntensity: 7,
-    };
-    if (theme === 'pipes') return {
-      wall: new THREE.MeshStandardMaterial({ map: TEX.rustTexture(), roughness: 0.8, metalness: 0.5 }),
-      floor: new THREE.MeshStandardMaterial({ map: TEX.rustTexture(), roughness: 0.9, metalness: 0.3 }),
-      ceiling: new THREE.MeshStandardMaterial({ map: TEX.rustTexture(), roughness: 0.9, metalness: 0.3 }),
-      lightColor: new THREE.Color(0xffb46b),
-      lightIntensity: 9,
-    };
-    if (theme === 'pools') return {
-      wall: new THREE.MeshStandardMaterial({ map: TEX.tileTexture(), roughness: 0.35 }),
-      floor: new THREE.MeshStandardMaterial({ map: TEX.tileTexture(), roughness: 0.4 }),
-      ceiling: new THREE.MeshStandardMaterial({ map: TEX.tileTexture(), roughness: 0.5 }),
-      lightColor: new THREE.Color(0xd8f4f0),
-      lightIntensity: 26,
-    };
-    return { // final
-      wall: new THREE.MeshStandardMaterial({ map: TEX.officeTexture(), roughness: 0.85 }),
-      floor: new THREE.MeshStandardMaterial({ map: TEX.concreteTexture(), roughness: 0.95 }),
-      ceiling: new THREE.MeshStandardMaterial({ color: 0x0d0608, roughness: 0.95 }),
-      lightColor: new THREE.Color(0xff2a1a),
-      lightIntensity: 8,
-    };
+  _buildFixtures(level, theme, ceilH) {
+    const isPipes = level.theme === 'pipes';
+    const isFinal = level.theme === 'final';
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x35363a, roughness: 0.5, metalness: 0.6 });
+    for (const li of level.lights) {
+      const on = !li.broken;
+      const fg = new THREE.Group();
+      const panelMat = new THREE.MeshStandardMaterial({
+        color: 0x101010,
+        emissive: theme.lightColor,
+        emissiveIntensity: on ? 0.95 : 0.02,
+      });
+      if (isPipes) {
+        // лампа на кабеле
+        const wire = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.3), frameMat);
+        wire.position.y = ceilH - 0.15;
+        fg.add(wire);
+        const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8), panelMat);
+        bulb.position.y = ceilH - 0.34;
+        fg.add(bulb);
+        this._fix(li, bulb);
+      } else if (isFinal) {
+        // аварийная мигалка
+        const base = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.07, 0.18), frameMat);
+        base.position.y = ceilH - 0.035;
+        fg.add(base);
+        const dome = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 8, 0, Math.PI * 2, 0, Math.PI / 2), panelMat);
+        dome.rotation.x = Math.PI;
+        dome.position.y = ceilH - 0.08;
+        fg.add(dome);
+        this._fix(li, dome);
+      } else {
+        // утопленная люминесцентная панель с рамкой
+        const frame = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.07, 0.75), frameMat);
+        frame.position.y = ceilH - 0.02;
+        fg.add(frame);
+        const panel = new THREE.Mesh(new THREE.PlaneGeometry(1.3, 0.62), panelMat);
+        panel.rotation.x = Math.PI / 2;
+        panel.position.y = ceilH - 0.062;
+        fg.add(panel);
+        this._fix(li, panel);
+      }
+      fg.position.set(li.x, 0, li.z);
+      this.group.add(fg);
+    }
+  }
+
+  _fix(li, emissiveMesh) {
+    this.fixtures.push({
+      x: li.x, z: li.z, broken: li.broken, flicker: li.flicker,
+      mesh: emissiveMesh, phase: Math.random() * 100,
+    });
+  }
+
+  _buildDust() {
+    const count = 420;
+    const geo = new THREE.BufferGeometry();
+    const pos = new Float32Array(count * 3);
+    const span = 26;
+    for (let i = 0; i < count; i++) {
+      pos[i * 3] = (Math.random() - 0.5) * span;
+      pos[i * 3 + 1] = Math.random() * (this.level.ceilH - 0.2);
+      pos[i * 3 + 2] = (Math.random() - 0.5) * span;
+    }
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    const cv = document.createElement('canvas');
+    cv.width = cv.height = 32;
+    const cx = cv.getContext('2d');
+    const grad = cx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    grad.addColorStop(0, 'rgba(255,250,230,1)');
+    grad.addColorStop(1, 'rgba(255,250,230,0)');
+    cx.fillStyle = grad;
+    cx.fillRect(0, 0, 32, 32);
+    const mat = new THREE.PointsMaterial({
+      size: 0.03, map: new THREE.CanvasTexture(cv),
+      transparent: true, opacity: 0.45, depthWrite: false,
+      blending: THREE.AdditiveBlending, color: 0xfff4d8,
+    });
+    this.dust = new THREE.Points(geo, mat);
+    this.dust.userData.span = span;
+    this.scene.add(this.dust);
   }
 
   _buildItem(item, theme, ceilH) {
@@ -194,7 +288,7 @@ export class World {
       mesh = new THREE.Group();
       const box = new THREE.Mesh(
         new THREE.BoxGeometry(0.7, 1.0, 0.25),
-        new THREE.MeshStandardMaterial({ color: 0x6a6a6e, roughness: 0.5, metalness: 0.6 })
+        new THREE.MeshStandardMaterial({ color: 0x6a6a6e, roughness: 0.45, metalness: 0.7 })
       );
       box.position.y = 1.3;
       mesh.add(box);
@@ -210,13 +304,13 @@ export class World {
       mesh = new THREE.Group();
       const base = new THREE.Mesh(
         new THREE.BoxGeometry(0.45, 0.7, 0.3),
-        new THREE.MeshStandardMaterial({ color: 0x88452a, roughness: 0.6, metalness: 0.5 })
+        new THREE.MeshStandardMaterial({ color: 0x88452a, roughness: 0.55, metalness: 0.6 })
       );
       base.position.y = 1.2;
       mesh.add(base);
       const handle = new THREE.Mesh(
         new THREE.CylinderGeometry(0.04, 0.04, 0.65),
-        new THREE.MeshStandardMaterial({ color: 0xcc3333, roughness: 0.4, metalness: 0.7 })
+        new THREE.MeshStandardMaterial({ color: 0xcc3333, roughness: 0.35, metalness: 0.7 })
       );
       handle.position.set(0, 1.45, 0.18);
       handle.rotation.x = -0.7;
@@ -224,20 +318,30 @@ export class World {
       mesh.userData.handle = handle;
       mesh.position.set(item.x, 0, item.z);
     } else if (item.type === 'locker') {
-      mesh = new THREE.Mesh(
+      mesh = new THREE.Group();
+      const body = new THREE.Mesh(
         new THREE.BoxGeometry(0.9, 2.1, 0.7),
-        new THREE.MeshStandardMaterial({ color: 0x2d4a3e, roughness: 0.55, metalness: 0.5 })
+        new THREE.MeshStandardMaterial({ color: 0x2d4a3e, roughness: 0.5, metalness: 0.55 })
       );
-      mesh.position.set(item.x, 1.05, item.z);
+      body.position.y = 1.05;
+      mesh.add(body);
+      for (let i = 0; i < 3; i++) {
+        const slot = new THREE.Mesh(
+          new THREE.BoxGeometry(0.5, 0.03, 0.02),
+          new THREE.MeshStandardMaterial({ color: 0x0a0f0c, roughness: 0.9 })
+        );
+        slot.position.set(0, 1.55 + i * 0.12, 0.36);
+        mesh.add(slot);
+      }
+      mesh.position.set(item.x, 0, item.z);
     } else if (item.type === 'plate') {
       mesh = new THREE.Mesh(
         new THREE.PlaneGeometry(0.9, 0.9),
         new THREE.MeshStandardMaterial({
-          map: TEX.plateTexture(this.level.puzzle.glyphs ? this.level.puzzle.glyphs[item.glyph] : '?', item.slot),
-          emissive: 0x886622, emissiveIntensity: 0.35, emissiveMap: null,
+          map: plateTexture(this.level.puzzle.glyphs ? this.level.puzzle.glyphs[item.glyph] : '?', item.slot),
+          emissive: 0x886622, emissiveIntensity: 0.35,
         })
       );
-      // прислоняем к ближайшей стене
       const ori = this._wallOrientation(item.x, item.z);
       mesh.position.set(item.x + ori.ox, 1.5, item.z + ori.oz);
       mesh.rotation.y = ori.rot;
@@ -245,7 +349,7 @@ export class World {
       mesh = new THREE.Group();
       const stand = new THREE.Mesh(
         new THREE.BoxGeometry(0.9, 1.3, 0.18),
-        new THREE.MeshStandardMaterial({ color: 0x3a3a40, roughness: 0.4, metalness: 0.7 })
+        new THREE.MeshStandardMaterial({ color: 0x3a3a40, roughness: 0.35, metalness: 0.75 })
       );
       stand.position.y = 1.15;
       mesh.add(stand);
@@ -260,13 +364,13 @@ export class World {
       mesh = new THREE.Group();
       const pipe = new THREE.Mesh(
         new THREE.CylinderGeometry(0.09, 0.09, 1.4),
-        new THREE.MeshStandardMaterial({ color: 0x5a4632, roughness: 0.6, metalness: 0.7 })
+        new THREE.MeshStandardMaterial({ color: 0x5a4632, roughness: 0.5, metalness: 0.75 })
       );
       pipe.position.y = 0.7;
       mesh.add(pipe);
       const wheel = new THREE.Mesh(
-        new THREE.TorusGeometry(0.3, 0.05, 8, 18),
-        new THREE.MeshStandardMaterial({ color: 0xa03030, roughness: 0.5, metalness: 0.6 })
+        new THREE.TorusGeometry(0.3, 0.05, 8, 20),
+        new THREE.MeshStandardMaterial({ color: 0xa03030, roughness: 0.4, metalness: 0.7 })
       );
       wheel.rotation.x = Math.PI / 2;
       wheel.position.y = 1.25;
@@ -277,7 +381,7 @@ export class World {
       mesh = new THREE.Group();
       const body = new THREE.Mesh(
         new THREE.BoxGeometry(0.5, 0.9, 0.3),
-        new THREE.MeshStandardMaterial({ color: 0x444448, roughness: 0.5, metalness: 0.6 })
+        new THREE.MeshStandardMaterial({ color: 0x444448, roughness: 0.45, metalness: 0.7 })
       );
       body.position.y = 1.25;
       mesh.add(body);
@@ -298,7 +402,6 @@ export class World {
   }
 
   _wallOrientation(x, z) {
-    // находит соседнюю стену для размещения таблички
     const C = this.grid.cell;
     const gx = Math.floor(x / C), gz = Math.floor(z / C);
     const get = (a, b) => (a < 0 || b < 0 || a >= this.grid.w || b >= this.grid.h) ? WALL : this.grid.cells[b * this.grid.w + a];
@@ -308,10 +411,9 @@ export class World {
     return { ox: C / 2 - 0.06, oz: 0, rot: -Math.PI / 2 };
   }
 
-  _buildExit(level, theme) {
+  _buildExit(level) {
     const g = new THREE.Group();
-    // рамка портала
-    const frameMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.4, metalness: 0.8 });
+    const frameMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.35, metalness: 0.85 });
     const top = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.2, 0.4), frameMat);
     top.position.y = 2.5;
     g.add(top);
@@ -322,11 +424,10 @@ export class World {
     }
     this.exitGlowMat = new THREE.MeshStandardMaterial({
       color: 0x000000, emissive: 0xaa1111, emissiveIntensity: 1.2,
-      transparent: true, opacity: 0.85,
+      transparent: true, opacity: 0.85, side: THREE.DoubleSide,
     });
     const glow = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 2.4), this.exitGlowMat);
     glow.position.y = 1.3;
-    glow.material.side = THREE.DoubleSide;
     g.add(glow);
     g.position.set(level.exit.x, 0, level.exit.z);
     this.group.add(g);
@@ -341,7 +442,6 @@ export class World {
     }
   }
 
-  // вызывается из game.js при событиях головоломки
   onItemEvent(id, ev) {
     const mesh = this.itemMeshes.get(id);
     if (!mesh) return;
@@ -353,20 +453,17 @@ export class World {
       if (mesh.userData.handle) mesh.userData.handle.rotation.x = -0.7;
     } else if (ev === 'done') {
       if (mesh.userData.wheel) mesh.userData.wheel.material.color.set(0x30a050);
-      if (mesh.userData.lamp) {
-        mesh.userData.lamp.material.emissive.set(0x22ff44);
-      }
+      if (mesh.userData.lamp) mesh.userData.lamp.material.emissive.set(0x22ff44);
     } else if (ev === 'insert') {
       if (mesh.userData.lamp) mesh.userData.lamp.material.emissive.set(0xffaa22);
     }
   }
 
-  // обновление света и анимаций
   update(dt, playerPos) {
     this.time += dt;
     if (!this.level) return;
 
-    // назначаем пул источников ближайшим плафонам
+    // пул источников света к ближайшим рабочим плафонам
     const working = this.fixtures.filter(f => !f.broken);
     working.sort((a, b) =>
       ((a.x - playerPos.x) ** 2 + (a.z - playerPos.z) ** 2) -
@@ -381,13 +478,17 @@ export class World {
         const v = Math.sin(this.time * 19 + f.phase) + Math.sin(this.time * 47 + f.phase * 2);
         if (v > 1.55) inten *= 0.15;
         else if (v > 1.2) inten *= 0.55;
-        f.mesh.material.emissiveIntensity = inten / this.theme.lightIntensity * 0.85;
+        f.mesh.material.emissiveIntensity = inten / this.theme.lightIntensity * 0.95;
+      }
+      // аварийные мигалки финала пульсируют
+      if (this.level.theme === 'final') {
+        inten *= 0.6 + 0.4 * Math.sin(this.time * 5 + f.phase);
       }
       pl.intensity = inten;
       pl.color.copy(this.theme.lightColor);
     }
 
-    // покачивание предметов-подбираемых
+    // покачивание подбираемых предметов
     for (const mesh of this.itemMeshes.values()) {
       if (mesh.userData.bob && mesh.visible) {
         mesh.position.y = 0.5 + Math.sin(this.time * 2 + mesh.position.x) * 0.07;
@@ -395,10 +496,29 @@ export class World {
       }
     }
 
-    // вода
+    // вода: скроллим карту нормалей
     if (this.waterMesh) {
-      this.waterMesh.material.map.offset.x = Math.sin(this.time * 0.18) * 0.08;
-      this.waterMesh.material.map.offset.y = this.time * 0.012;
+      const nm = this.waterMesh.material.normalMap;
+      nm.offset.x = this.time * 0.018;
+      nm.offset.y = Math.sin(this.time * 0.12) * 0.05 + this.time * 0.011;
+    }
+
+    // пыль дрейфует и заворачивается вокруг игрока
+    if (this.dust) {
+      const pos = this.dust.geometry.attributes.position;
+      const span = this.dust.userData.span, half = span / 2;
+      for (let i = 0; i < pos.count; i++) {
+        let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+        y -= dt * 0.045;
+        x += Math.sin(this.time * 0.35 + i) * dt * 0.05;
+        if (y < 0.1) y = this.level.ceilH - 0.2;
+        while (x < playerPos.x - half) x += span;
+        while (x > playerPos.x + half) x -= span;
+        while (z < playerPos.z - half) z += span;
+        while (z > playerPos.z + half) z -= span;
+        pos.setXYZ(i, x, y, z);
+      }
+      pos.needsUpdate = true;
     }
 
     // пульсация выхода
@@ -420,7 +540,6 @@ export class World {
     return this.grid.cells[gz * this.grid.w + gx] === WATER;
   }
 
-  // скользящая коллизия круга радиусом r
   collide(x, z, r) {
     const C = this.grid.cell;
     let nx = x, nz = z;
@@ -429,7 +548,6 @@ export class World {
       for (let dx = -1; dx <= 1; dx++) {
         const cx = gx + dx, cz = gz + dz;
         if (!this.isWall(cx, cz)) continue;
-        // ближайшая точка AABB клетки
         const minX = cx * C, maxX = (cx + 1) * C;
         const minZ = cz * C, maxZ = (cz + 1) * C;
         const px = Math.max(minX, Math.min(nx, maxX));
@@ -441,7 +559,6 @@ export class World {
           nx = px + (ddx / d) * r;
           nz = pz + (ddz / d) * r;
         } else if (d2 <= 1e-9) {
-          // оказались внутри стены — выталкиваем к центру предыдущей клетки
           nx = (gx + 0.5) * C;
           nz = (gz + 0.5) * C;
         }

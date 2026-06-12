@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<!-- Просмотр уровней без игры: /debug-world.html?index=2&x=10&z=10&yaw=0.5&light=1 -->
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<style>
+  body { margin: 0; background: #000; overflow: hidden; }
+  canvas { display: block; }
+  #label { position: fixed; left: 12px; top: 10px; color: #d8c051;
+           font: 16px Oswald, sans-serif; letter-spacing: 2px; text-shadow: 0 0 8px #000; z-index: 5; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }
+</script>
+</head>
+<body>
+<div id="label"></div>
+<script type="module">
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { World } from './js/world.js';
+
+const q = new URLSearchParams(location.search);
+const index = q.get('index') || '0';
+const data = await (await fetch(`/debug-level?index=${index}&seed=${q.get('seed') || 12345}`)).json();
+document.getElementById('label').textContent = data.name;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.2;
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 120);
+
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+scene.environmentIntensity = 0.08 + data.ambient * 0.3;
+scene.fog = new THREE.FogExp2(data.fog.color, data.fog.density);
+scene.background = new THREE.Color(data.fog.color).multiplyScalar(0.25);
+scene.add(new THREE.AmbientLight(0xffffff, data.ambient * 0.9));
+
+const world = new World(scene);
+world.build(data);
+
+// камера: от спавна или из параметров
+const px = q.get('x') ? parseFloat(q.get('x')) : data.spawn.x;
+const pz = q.get('z') ? parseFloat(q.get('z')) : data.spawn.z;
+let yaw;
+if (q.get('yaw') !== null) {
+  yaw = parseFloat(q.get('yaw'));
+} else {
+  // смотрим в самый длинный открытый коридор
+  const C = data.cell;
+  let best = { d: -1, dx: 0, dz: -1 };
+  for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+    let d = 0;
+    let gx = Math.floor(px / C), gz = Math.floor(pz / C);
+    while (d < 40) {
+      gx += dx; gz += dz;
+      if (world.isWall(gx, gz)) break;
+      d++;
+    }
+    if (d > best.d) best = { d, dx, dz };
+  }
+  yaw = Math.atan2(-best.dx, -best.dz);
+}
+camera.position.set(px, 1.7, pz);
+camera.rotation.order = 'YXZ';
+camera.rotation.y = yaw;
+
+// фонарик по желанию
+if (q.get('light') === '1') {
+  const flash = new THREE.SpotLight(0xfff1d0, 32, 22, 0.46, 0.45, 1.2);
+  flash.castShadow = true;
+  flash.position.copy(camera.position);
+  const t = new THREE.Object3D();
+  t.position.set(px - Math.sin(yaw) * 8, 1.2, pz - Math.cos(yaw) * 8);
+  scene.add(t);
+  flash.target = t;
+  scene.add(flash);
+}
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+if (q.get('ao') !== '0') {
+  const gtao = new GTAOPass(scene, camera, innerWidth, innerHeight);
+  gtao.blendIntensity = 0.9;
+  composer.addPass(gtao);
+}
+composer.addPass(new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.22, 0.5, 0.88));
+
+let last = 0;
+function loop(t) {
+  requestAnimationFrame(loop);
+  const dt = Math.min(0.05, (t - last) / 1000 || 0.016);
+  last = t;
+  world.update(dt, camera.position);
+  composer.render();
+}
+requestAnimationFrame(loop);
+window.__ready = true;
+</script>
+</body>
+</html>

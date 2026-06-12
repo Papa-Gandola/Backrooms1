@@ -14,6 +14,14 @@ const app = express();
 app.use(express.static(path.join(__dirname, '..', 'public')));
 app.use('/vendor/three', express.static(path.join(__dirname, '..', 'node_modules', 'three')));
 
+// отладка: выдать сгенерированный уровень без игры (для /debug-world.html)
+const { genLevel, serializeLevel } = require('./levels');
+app.get('/debug-level', (req, res) => {
+  const index = Math.min(4, Math.max(0, parseInt(req.query.index || '0', 10)));
+  const seed = parseInt(req.query.seed || '12345', 10);
+  res.json(serializeLevel(genLevel(index, seed)));
+});
+
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
 

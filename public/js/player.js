@@ -28,9 +28,21 @@ export class PlayerController {
     // фонарик
     this.flash = new THREE.SpotLight(0xfff1d0, 0, 22, 0.46, 0.45, 1.2);
     this.flash.castShadow = true;
-    this.flash.shadow.mapSize.set(512, 512);
+    this.flash.shadow.mapSize.set(1024, 1024);
+    this.flash.shadow.bias = -0.002;
     this.flashTarget = new THREE.Object3D();
     this.flash.target = this.flashTarget;
+
+    // объёмный конус луча (фейковый volumetric)
+    const coneGeo = new THREE.ConeGeometry(2.6, 9, 24, 1, true);
+    coneGeo.translate(0, -4.5, 0);     // вершина в начале координат
+    coneGeo.rotateX(-Math.PI / 2);     // раскрытие вдоль +Z
+    this.beam = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({
+      color: 0xfff3d6, transparent: true, opacity: 0.05,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+      side: THREE.DoubleSide, fog: false,
+    }));
+    this.beam.visible = false;
 
     this._bind();
   }
@@ -38,6 +50,7 @@ export class PlayerController {
   addToScene(scene) {
     scene.add(this.flash);
     scene.add(this.flashTarget);
+    scene.add(this.beam);
   }
 
   _bind() {
@@ -140,7 +153,7 @@ export class PlayerController {
     this.camera.rotation.z = sway;
 
     // фонарик следует за взглядом с небольшим отставанием
-    this.flash.intensity = (this.light && !this.hidden) ? 42 : 0;
+    this.flash.intensity = (this.light && !this.hidden) ? 32 : 0;
     this.flash.position.copy(this.pos);
     this.flash.position.y -= 0.15;
     const fx = -Math.sin(this.yaw) * Math.cos(this.pitch);
@@ -149,6 +162,15 @@ export class PlayerController {
     const t = this.flashTarget.position;
     const want = new THREE.Vector3(this.pos.x + fx * 8, this.pos.y + fy * 8, this.pos.z + fz * 8);
     t.lerp(want, Math.min(1, 12 * dt));
+
+    // объёмный луч: вершина чуть ниже камеры, направлен на цель фонаря
+    this.beam.visible = this.flash.intensity > 0;
+    if (this.beam.visible) {
+      this.beam.position.copy(this.pos);
+      this.beam.position.y -= 0.18;
+      this.beam.lookAt(t);
+      this.beam.material.opacity = 0.045 + Math.sin(performance.now() / 700) * 0.006;
+    }
   }
 
   forward() {

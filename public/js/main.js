@@ -5,6 +5,8 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 import { Net } from './net.js';
 import { World } from './world.js';
@@ -197,14 +199,24 @@ function initGame() {
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 120);
 
+  // мягкие отражения окружения для PBR-материалов
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = 0.2;
+
   world = new World(scene);
   player = new PlayerController(camera, world, audio);
   player.addToScene(scene);
   partner = new PartnerAvatar(scene, partnerName);
 
-  // постобработка: bloom + зерно/виньетка/хроматика
+  // постобработка: SSAO + bloom + зерно/виньетка/хроматика
   composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
+  if (new URLSearchParams(location.search).get('ao') !== '0') {
+    const gtao = new GTAOPass(scene, camera, innerWidth, innerHeight);
+    gtao.blendIntensity = 0.9;
+    composer.addPass(gtao);
+  }
   const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.22, 0.5, 0.88);
   composer.addPass(bloom);
   grainPass = new ShaderPass(GrainShader);
@@ -236,6 +248,13 @@ function initGame() {
 
   requestAnimationFrame(loop);
   setInterval(() => { if (level) net.send(player.netState()); }, 80);
+  window.__diag = () => ({
+    me: { x: player.pos.x, z: player.pos.z, yaw: player.yaw },
+    partnerCur: { ...partner.cur },
+    partnerDst: { x: partner.dst.x, z: partner.dst.z },
+    spawn: level ? level.spawn : null,
+    entity: { ...entityState },
+  });
 }
 
 function onGameKey(e) {
@@ -266,6 +285,7 @@ function loadLevel(data) {
   world.build(data);
   scene.fog = new THREE.FogExp2(data.fog.color, data.fog.density);
   scene.background = new THREE.Color(data.fog.color).multiplyScalar(0.25);
+  scene.environmentIntensity = 0.08 + data.ambient * 0.3;
 
   // базовое освещение
   if (world.ambLight) scene.remove(world.ambLight);
@@ -276,7 +296,8 @@ function loadLevel(data) {
   entityView = new EntityView(scene, data.entity.type, partnerName);
   entityState = { x: -999, z: -999, state: data.entity.dormant ? 'dormant' : 'roam' };
 
-  player.teleport(data.spawn.x, data.spawn.z);
+  // слот 1 спавнится с офсетом, чтобы игроки не оказались в одной точке
+  player.teleport(data.spawn.x, data.spawn.z + (mySlot === 1 ? 1.2 : 0));
   player.frozen = true;
   player.setHidden(false);
   player.light = false;

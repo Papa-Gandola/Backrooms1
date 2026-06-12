@@ -1,18 +1,28 @@
 // Гуманоидная фигура: используется для напарника и для Кожекрада (его двойника).
 
 import * as THREE from 'three';
+import { clothMaterial, fleshMaterial } from './materials.js';
+
+// материалы общие для напарника и кожекрада — бейкаются один раз
+let _cloth, _dark, _face;
+function humanMats() {
+  if (!_cloth) {
+    _cloth = clothMaterial(0x4f6b8f);
+    _dark = clothMaterial(0x23282e);
+    _face = fleshMaterial(0xc9a98c, 0x8f6a55, 0.55);
+  }
+  return { cloth: _cloth, dark: _dark, face: _face };
+}
 
 export function buildHumanoid(color = 0x6b7a8f, isStealer = false) {
   const g = new THREE.Group();
-  const skin = new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x23282e, roughness: 0.9 });
+  const { cloth: skin, dark, face } = humanMats();
 
-  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.55, 4, 8), skin);
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.22, 0.55, 8, 16), skin);
   torso.position.y = 1.05;
   g.add(torso);
 
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 10),
-    new THREE.MeshStandardMaterial({ color: 0xc9a98c, roughness: 0.8 }));
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.16, 18, 14), face);
   head.position.y = 1.62;
   g.add(head);
 

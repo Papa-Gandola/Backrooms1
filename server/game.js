@@ -457,8 +457,9 @@ class GameSession {
           if (!this.level) return;
           p.dead = false;
           p.graceUntil = Date.now() + 6000; // неуязвимость после возрождения
-          p.pos = { x: this.level.spawn.x, y: 1.7, z: this.level.spawn.z };
-          this.room.sendTo(p, { t: 'respawn', x: this.level.spawn.x, z: this.level.spawn.z });
+          const rz = this.level.spawn.z + (p.slot === 1 ? 1.2 : 0);
+          p.pos = { x: this.level.spawn.x, y: 1.7, z: rz };
+          this.room.sendTo(p, { t: 'respawn', x: this.level.spawn.x, z: rz });
         }, 3500);
       }
     }
