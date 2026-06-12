@@ -1,0 +1,21 @@
+{
+  "name": "the-backrooms-coop",
+  "version": "1.0.0",
+  "description": "Кооперативный хоррор на двоих в стиле Backrooms (Three.js + WebSocket)",
+  "main": "server/server.js",
+  "scripts": {
+    "start": "node server/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "http://local_proxy@127.0.0.1:43721/git/Papa-Gandola/Backrooms1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^5.2.1",
+    "three": "^0.184.0",
+    "ws": "^8.21.0"
+  }
+}

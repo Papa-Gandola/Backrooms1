@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>THE BACKROOMS — кооперативный хоррор</title>
+<link rel="stylesheet" href="css/style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "/vendor/three/build/three.module.js",
+    "three/addons/": "/vendor/three/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<!-- ГЛАВНОЕ МЕНЮ -->
+<div id="menu" class="screen">
+  <div class="noise-bg"></div>
+  <h1 class="title">THE&nbsp;BACKROOMS</h1>
+  <p class="subtitle">если не смотреть в темноту — она посмотрит на тебя</p>
+  <div class="menu-box">
+    <input id="nameInput" type="text" maxlength="16" placeholder="Твоё имя" autocomplete="off">
+    <button id="createBtn" class="btn">СОЗДАТЬ ИГРУ</button>
+    <div class="join-row">
+      <input id="codeInput" type="text" maxlength="4" placeholder="КОД" autocomplete="off">
+      <button id="joinBtn" class="btn">ВОЙТИ</button>
+    </div>
+    <p id="menuError" class="menu-error"></p>
+  </div>
+  <div class="controls-hint">
+    <b>Управление:</b> WASD — движение · SHIFT — бег (шумно!) · C — присесть ·
+    F — фонарик · E — взаимодействие · Q — сигнал напарнику · V — голосовой чат
+  </div>
+</div>
+
+<!-- ЛОББИ -->
+<div id="lobby" class="screen hidden">
+  <div class="noise-bg"></div>
+  <h2 class="lobby-title">КОМНАТА СОЗДАНА</h2>
+  <div class="room-code" id="roomCode">····</div>
+  <p class="lobby-hint">Передай этот код напарнику.<br>Игра начнётся, как только он войдёт.</p>
+  <p class="waiting" id="lobbyStatus">ожидание напарника<span class="dots">...</span></p>
+</div>
+
+<!-- ИГРА -->
+<div id="game" class="hidden">
+  <canvas id="canvas"></canvas>
+
+  <div id="hud" class="hidden">
+    <div id="crosshair"></div>
+    <div id="objective"></div>
+    <div id="prompt"></div>
+    <div id="staminaWrap"><div id="stamina"></div></div>
+    <div id="inventory"></div>
+    <div id="partnerInfo"></div>
+    <div id="voiceInfo"></div>
+    <div id="signalFlash" class="hidden">⚑ СИГНАЛ НАПАРНИКА — ОН НАСТОЯЩИЙ</div>
+    <div id="subtitles"></div>
+
+    <!-- панель глифов (уровень 2) -->
+    <div id="glyphPanel" class="hidden">
+      <div class="glyph-title">ПАНЕЛЬ ДОСТУПА — клавиши 1–4 меняют символ</div>
+      <div class="glyph-slots">
+        <div class="glyph-slot" data-slot="0">◆</div>
+        <div class="glyph-slot" data-slot="1">◆</div>
+        <div class="glyph-slot" data-slot="2">◆</div>
+        <div class="glyph-slot" data-slot="3">◆</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- заставка уровня -->
+  <div id="levelCard" class="overlay hidden">
+    <div id="levelName" class="level-name"></div>
+    <div id="levelHint" class="level-hint"></div>
+  </div>
+
+  <!-- скример -->
+  <div id="jumpscare" class="overlay hidden">
+    <canvas id="scareCanvas" width="800" height="800"></canvas>
+  </div>
+  <div id="deathScreen" class="overlay hidden">
+    <div class="death-text">ОНО ДОБРАЛОСЬ ДО ТЕБЯ</div>
+  </div>
+
+  <!-- победа -->
+  <div id="victory" class="overlay hidden">
+    <div class="victory-text">ВЫ ВЫБРАЛИСЬ</div>
+    <div class="victory-sub" id="victoryStats"></div>
+    <div class="victory-sub2">...или вам так только кажется</div>
+  </div>
+
+  <!-- пауза / клик для захвата мыши -->
+  <div id="clickToPlay" class="overlay hidden">
+    <div class="ctp-text">НАЖМИ, ЧТОБЫ ПРОДОЛЖИТЬ</div>
+  </div>
+
+  <div id="disconnected" class="overlay hidden">
+    <div class="death-text small">СВЯЗЬ С НАПАРНИКОМ ПОТЕРЯНА</div>
+    <button class="btn" onclick="location.reload()">В МЕНЮ</button>
+  </div>
+
+  <div id="vignette"></div>
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
