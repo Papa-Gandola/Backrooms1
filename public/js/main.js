@@ -11,7 +11,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Net } from './net.js';
 import { World } from './world.js';
 import { PlayerController } from './player.js';
-import { PartnerAvatar } from './avatar.js';
+import { PartnerAvatar, SelfBody } from './avatar.js';
 import { EntityView } from './entities.js';
 import { AudioEngine } from './audio.js';
 import { VoiceChat } from './voice.js';
@@ -25,7 +25,7 @@ const audio = new AudioEngine();
 let voice = null;
 
 let renderer, scene, camera, composer, grainPass;
-let world, player, partner, entityView;
+let world, player, partner, selfBody, entityView;
 let mySlot = 0;
 let myName = 'Аноним';
 let partnerName = '???';
@@ -78,6 +78,27 @@ $('createBtn').textContent = 'СОЗДАТЬ ИГРУ';
 $('joinBtn').disabled = false;
 $('joinBtn').textContent = 'ВОЙТИ';
 
+// сохранённый прогресс: создаём комнату сразу с нужного уровня
+try {
+  const save = JSON.parse(localStorage.getItem('br_save'));
+  if (save && Number.isInteger(save.level) && save.level > 0) {
+    const btn = $('resumeBtn');
+    btn.classList.remove('hidden');
+    btn.textContent = `ПРОДОЛЖИТЬ — УРОВЕНЬ ${save.level}`;
+    btn.onclick = async () => {
+      myName = $('nameInput').value.trim() || 'Аноним';
+      localStorage.setItem('br_name', myName);
+      UI.menuError('');
+      try {
+        if (!net.connected) await net.connect();
+        net.send({ t: 'create', name: myName, resume: { seed: save.seed, level: save.level } });
+      } catch {
+        UI.menuError('Не удалось подключиться к серверу');
+      }
+    };
+  }
+} catch { /* битый сейв игнорируем */ }
+
 // ---------- сетевые события ----------
 
 net.on('err', (m) => UI.menuError(m.msg));
@@ -103,6 +124,9 @@ net.on('partnerJoined', (m) => {
 
 net.on('level', async (m) => {
   if (!inGame) initGame();
+  if (m.progress) {
+    localStorage.setItem('br_save', JSON.stringify(m.progress));
+  }
   loadLevel(m.data);
 });
 
@@ -173,6 +197,7 @@ net.on('descend', () => {
 });
 
 net.on('victory', () => {
+  localStorage.removeItem('br_save');
   const secs = Math.floor((Date.now() - startTime) / 1000);
   const timeStr = `${Math.floor(secs / 60)} мин ${secs % 60} сек`;
   UI.victory(timeStr);
@@ -217,6 +242,7 @@ function initGame() {
   player = new PlayerController(camera, world, audio);
   player.addToScene(scene);
   partner = new PartnerAvatar(scene, partnerName);
+  selfBody = new SelfBody(scene);
 
   // постобработка: SSAO + bloom + зерно/виньетка/хроматика
   composer = new EffectComposer(renderer);
@@ -257,6 +283,7 @@ function initGame() {
 
   requestAnimationFrame(loop);
   setInterval(() => { if (level) net.send(player.netState()); }, 80);
+  window.__look = (pitch, yaw) => { player.pitch = pitch; if (yaw !== undefined) player.yaw = yaw; };
   window.__diag = () => ({
     me: { x: player.pos.x, z: player.pos.z, yaw: player.yaw },
     partnerCur: { ...partner.cur },
@@ -464,6 +491,7 @@ function loop(t) {
   player.update(dt);
   world.update(dt, player.pos);
   partner.update(dt);
+  if (selfBody) selfBody.update(dt, player);
   if (entityView) entityView.update(dt, player.pos);
 
   // отмечаем таблички, к которым подошли

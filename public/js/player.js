@@ -123,6 +123,19 @@ export class PlayerController {
       const c = this.world.collide(nx, nz, 0.35);
       nx = c.x; nz = c.z;
     }
+    // мебель занимает место
+    if (this.world.propColliders) {
+      for (const c of this.world.propColliders) {
+        const dx2 = nx - c.x, dz2 = nz - c.z;
+        const min = c.r + 0.3;
+        const d2 = dx2 * dx2 + dz2 * dz2;
+        if (d2 < min * min && d2 > 1e-9) {
+          const d = Math.sqrt(d2);
+          nx = c.x + (dx2 / d) * min;
+          nz = c.z + (dz2 / d) * min;
+        }
+      }
+    }
     this.pos.x = nx; this.pos.z = nz;
 
     this.moving = (fwd !== 0 || str !== 0) && Math.hypot(this.vel.x, this.vel.z) > 0.4;

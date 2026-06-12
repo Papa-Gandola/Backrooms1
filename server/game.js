@@ -7,17 +7,18 @@ const { genLevel, serializeLevel, LEVEL_COUNT, CELL, WATER, bfsDistances } = req
 const TICK = 1000 / 20;
 
 class GameSession {
-  constructor(room) {
+  constructor(room, resume) {
     this.room = room; // { players: [p1, p2], broadcast(obj), sendTo(p,obj) }
-    this.seed = (Math.random() * 0xffffffff) >>> 0;
-    this.levelIndex = 0;
+    this.seed = resume?.seed ?? ((Math.random() * 0xffffffff) >>> 0);
+    this.startIndex = resume?.level ?? 0;
+    this.levelIndex = this.startIndex;
     this.level = null;
     this.entity = null;
     this.puzzle = null;
     this.finished = false;
     this.timer = setInterval(() => this.tick(), TICK);
     this.lastEntityBroadcast = 0;
-    this.startLevel(0);
+    this.startLevel(this.startIndex);
   }
 
   destroy() {
@@ -35,7 +36,7 @@ class GameSession {
       p.yaw = 0; p.hidden = false; p.dead = false;
       p.noise = 0; p.light = false; p.moving = false; p.running = false;
     }
-    this.room.broadcast({ t: 'level', data: serializeLevel(this.level) });
+    this.room.broadcast({ t: 'level', data: serializeLevel(this.level), progress: { seed: this.seed, level: index } });
   }
 
   initPuzzle() {

@@ -21,6 +21,44 @@ export function makeNameSprite(name, color = '#7ec850') {
   return sprite;
 }
 
+// Тело главного героя: видно от первого лица (ноги/руки при взгляде вниз),
+// голова скрыта, анимации те же, что у напарника.
+export class SelfBody {
+  constructor(scene) {
+    this.scene = scene;
+    this.char = createCharacter();
+    const b = this.char.bones;
+    if (b.Head) b.Head.scale.setScalar(0.001); // прячем голову (камера внутри)
+    this.mesh = new THREE.Group();
+    this.mesh.add(this.char.root);
+    scene.add(this.mesh);
+  }
+
+  update(dt, player) {
+    this.mesh.visible = !player.hidden;
+    // тело чуть позади камеры, чтобы не лезло в кадр
+    const bx = player.pos.x + Math.sin(player.yaw) * 0.14;
+    const bz = player.pos.z + Math.cos(player.yaw) * 0.14;
+    this.mesh.position.set(bx, 0, bz);
+    this.mesh.rotation.y = player.yaw + Math.PI;
+
+    if (player.moving) {
+      this.char.play(player.running ? 'Run' : 'Walk', 0.2, player.crouch ? 0.7 : 1);
+    } else {
+      this.char.play('Idle', 0.3);
+    }
+    this.char.mixer.update(dt);
+
+    const b = this.char.bones;
+    if (player.crouch) {
+      if (b.Spine) b.Spine.rotation.x += 0.45;
+      this.char.root.position.y = -0.32;
+    } else {
+      this.char.root.position.y = 0;
+    }
+  }
+}
+
 // Аватар напарника с интерполяцией по сети
 export class PartnerAvatar {
   constructor(scene, name) {

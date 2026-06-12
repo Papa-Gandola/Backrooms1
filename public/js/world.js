@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import { themeMaterials, waterNormalTexture } from './materials.js';
 import { plateTexture } from './textures.js';
+import { scatterProps } from './props.js';
 
 const FLOOR = 0, WALL = 1, WATER = 2;
 
@@ -35,6 +36,7 @@ export class World {
     this.itemMeshes.clear();
     this.fixtures = [];
     this.lightPool = [];
+    this.propColliders = [];
     this.doorOpen = false;
   }
 
@@ -194,6 +196,14 @@ export class World {
     // ---- предметы и выход ----
     for (const item of level.items) this._buildItem(item, theme, ceilH);
     this._buildExit(level, theme);
+
+    // ---- мебель-декор (одинакова у обоих игроков благодаря сиду) ----
+    const avoid = [
+      { x: level.spawn.x, z: level.spawn.z, r: 3.5 },
+      { x: level.exit.x, z: level.exit.z, r: 3.0 },
+      ...level.items.map(i => ({ x: i.x, z: i.z, r: 1.6 })),
+    ];
+    this.propColliders = scatterProps(this.group, level.theme, this.grid, C, level.seedVal || 1, avoid);
   }
 
   // двери номеров вдоль коридоров

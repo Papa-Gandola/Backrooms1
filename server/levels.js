@@ -430,7 +430,7 @@ function genLevel(index, seed) {
       lights: placeLights(rng, grid, 5, 2, 0.06),
       entity: { type: 'partygoer' },
       puzzle: { kind: 'collect', itemType: 'balloon', need: 5 },
-      ceilH: 3.4, fog: { color: 0xc9b09a, density: 0.05 }, ambient: 0.55,
+      ceilH: 3.4, fog: { color: 0x8a7868, density: 0.055 }, ambient: 0.32,
     };
   } else {
     // УРОВЕНЬ 6 — ИСХОД. Финальная погоня.
@@ -462,6 +462,7 @@ function genLevel(index, seed) {
 
   level.index = index;
   level.cell = CELL;
+  level.seedVal = (seed + index * 7919) >>> 0;
   return level;
 }
 
@@ -480,6 +481,7 @@ function findSpawn(grid, rng) {
 function serializeLevel(level) {
   return {
     index: level.index,
+    seedVal: level.seedVal,
     name: level.name,
     hint: level.hint,
     theme: level.theme,

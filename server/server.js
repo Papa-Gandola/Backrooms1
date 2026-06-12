@@ -51,7 +51,7 @@ class Room {
     if (p.ws.readyState === 1) p.ws.send(JSON.stringify(obj));
   }
   start() {
-    this.session = new GameSession(this);
+    this.session = new GameSession(this, this.resume);
   }
   close(reason) {
     if (this.session) { this.session.destroy(); this.session = null; }
@@ -95,6 +95,9 @@ function handle(p, m) {
       if (p.room) return;
       p.name = sanitizeName(m.name);
       const room = new Room(makeCode());
+      if (m.resume && Number.isInteger(m.resume.level) && m.resume.level >= 0 && m.resume.level <= 6) {
+        room.resume = { seed: (m.resume.seed >>> 0), level: m.resume.level };
+      }
       rooms.set(room.code, room);
       p.room = room; p.slot = 0;
       room.players.push(p);

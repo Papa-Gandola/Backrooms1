@@ -491,7 +491,7 @@ export function themeMaterials(theme) {
       ceiling: new THREE.MeshStandardMaterial({ color: 0xd8d2c4, roughness: 0.9 }),
       trim: new THREE.MeshStandardMaterial({ color: 0xc9b8d4, roughness: 0.6 }),
       lightColor: new THREE.Color(0xffe9f0),
-      lightIntensity: 22,
+      lightIntensity: 10,
     };
   } else {
     m = {
