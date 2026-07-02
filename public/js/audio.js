@@ -21,6 +21,32 @@ export class AudioEngine {
     this.master.gain.value = 0.9;
     this.master.connect(this.ctx.destination);
     this._makeHeartbeat();
+    this.samples = {};
+    this._loadSamples();
+  }
+
+  // настоящие записи (найдены в открытых источниках); при сбое остаётся синтез
+  async _loadSamples() {
+    const files = { scream: '/sounds/scream.mp3', scream2: '/sounds/scream2.ogg', growl: '/sounds/growl.ogg', siren: '/sounds/siren.ogg' };
+    for (const [name, url] of Object.entries(files)) {
+      try {
+        const buf = await (await fetch(url)).arrayBuffer();
+        this.samples[name] = await this.ctx.decodeAudioData(buf);
+      } catch { /* останется процедурный звук */ }
+    }
+  }
+
+  playSample(name, volume = 1, rate = 1) {
+    const buf = this.samples?.[name];
+    if (!buf || !this.ctx) return false;
+    const src = this.ctx.createBufferSource();
+    src.buffer = buf;
+    src.playbackRate.value = rate;
+    const g = this.ctx.createGain();
+    g.gain.value = volume;
+    src.connect(g).connect(this.master);
+    src.start();
+    return true;
   }
 
   resume() { if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume(); }
@@ -382,6 +408,19 @@ export class AudioEngine {
   jumpscare() {
     if (!this.ctx) return;
     const t = this.ctx.currentTime;
+    // суб-бас «удар в грудь» — в любом случае
+    {
+      const o = this.ctx.createOscillator();
+      o.frequency.setValueAtTime(120, t);
+      o.frequency.exponentialRampToValueAtTime(28, t + 0.9);
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(1.0, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 1.1);
+      o.connect(g).connect(this.master);
+      o.start(t); o.stop(t + 1.2);
+    }
+    // настоящий крик, если загрузился
+    if (this.playSample('scream', 1.0, 1.0)) return;
     // визг
     const o = this.ctx.createOscillator();
     o.type = 'sawtooth';

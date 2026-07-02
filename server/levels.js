@@ -294,7 +294,14 @@ function pickSpread(rng, cands, count, minSep) {
       if (picked.length >= count) break;
     }
   }
-  while (picked.length < count && pool.length) picked.push(pool[picked.length]);
+  // добор без дублей: раньше могли положить два предмета в одну клетку,
+  // и один из них было не найти
+  if (picked.length < count) {
+    for (const c of pool) {
+      if (picked.length >= count) break;
+      if (!picked.some(p => p.x === c.x && p.z === c.z)) picked.push(c);
+    }
+  }
   return picked;
 }
 
@@ -321,10 +328,10 @@ function genLevel(index, seed) {
       name: 'УРОВЕНЬ 0 — ЖЁЛТЫЕ КОМНАТЫ',
       hint: 'Найдите 3 предохранителя и вставьте их в щиток у люка. Сущность идёт на звук — не бегайте без нужды.',
       theme: 'yellow', grid, spawn, exit, items,
-      lights: placeLights(rng, grid, 4, 2, 0.10),
+      lights: placeLights(rng, grid, 4, 2, 0.06),
       entity: { type: 'wanderer' },
       puzzle: { kind: 'fuses', need: 3 },
-      ceilH: 3.0, fog: { color: 0x9a8a45, density: 0.045 }, ambient: 0.75,
+      ceilH: 3.0, fog: { color: 0x8f814a, density: 0.038 }, ambient: 0.8,
     };
   } else if (index === 1) {
     // УРОВЕНЬ 1 — Тёмный склад. Сущность: Гончая (реагирует на свет и бег). Кооп-рычаги.

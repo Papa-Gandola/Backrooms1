@@ -88,69 +88,74 @@ function wallpaper() {
   const colCache = new Map();
   const colOf = (u) => {
     let c = colCache.get(u);
-    if (c === undefined) { c = Math.pow(fbm(u, 0.0, 48, 3), 3.5); colCache.set(u, c); }
+    if (c === undefined) { c = Math.pow(fbm(u, 0.0, 48, 3), 4); colCache.set(u, c); }
     return c;
   };
   return bake(512, (u, v, o) => {
-    // полосы обоев двух тонов
-    const stripe = 0.5 + 0.5 * Math.sin(u * Math.PI * 2 * 14);
-    const sMask = step(0.35, 0.65, stripe);
-    const mottle = fbm(u, v, 6, 4);
-    const grain = fbm(u, v, 96, 3);
-    // потёки сверху: тёмные колонны, затухающие вниз
-    const drip = colOf(u) * step(1.0, 0.35, v) * 1.6;
-    // общая грязь по низу
-    const lowGrime = step(0.75, 1.0, v) * 0.35 * (0.5 + mottle);
-    const age = clamp01(drip + lowGrime + Math.pow(fbm(u + 0.31, v + 0.7, 5, 4), 3) * 0.8);
+    // мелкозернистая фактура старых обоев (стипл), как в каноне
+    const stipple = vnoise(u, v, 300) * 0.55 + vnoise(u + 0.37, v + 0.61, 150) * 0.45;
+    const mottle = fbm(u, v, 5, 4);          // крупные мягкие пятна влажности
+    const micro = fbm(u, v, 60, 3);
+    // лёгкие подтёки сверху и грязца у пола — заметно слабее прежнего
+    const drip = colOf(u) * step(1.0, 0.5, v) * 0.55;
+    const lowGrime = step(0.82, 1.0, v) * 0.22 * (0.5 + mottle);
+    const age = clamp01(drip + lowGrime + Math.pow(fbm(u + 0.31, v + 0.7, 4, 4), 3.5) * 0.45);
 
-    let r = 200, g = 176, b = 86;
-    const tone = mix(0.9, 1.06, sMask) * mix(0.86, 1.1, mottle) * mix(1, 0.92, grain);
-    r *= tone; g *= tone; b *= tone * 0.96;
-    r = mix(r, 58, age * 0.6); g = mix(g, 47, age * 0.6); b = mix(b, 22, age * 0.6);
+    let r = 212, g = 192, b = 106;
+    const tone = mix(0.94, 1.05, stipple) * mix(0.9, 1.06, mottle) * mix(0.97, 1.02, micro);
+    r *= tone; g *= tone; b *= tone * 0.98;
+    r = mix(r, 96, age); g = mix(g, 82, age); b = mix(b, 44, age);
     o.r = r; o.g = g; o.b = b;
-    o.h = 0.5 + (sMask - 0.5) * 0.08 + grain * 0.12 + mottle * 0.05 - age * 0.1;
-    o.rough = 0.93 - age * 0.25 + grain * 0.05;
-  }, 1.1);
+    o.h = 0.5 + stipple * 0.16 + mottle * 0.05 - age * 0.06;
+    o.rough = 0.88 + stipple * 0.06 - age * 0.1;
+  }, 1.0);
 }
 
 function carpet() {
   return bake(384, (u, v, o) => {
-    const fiber = vnoise(u, v, 220) * 0.6 + vnoise(u + 0.5, v + 0.5, 110) * 0.4;
-    const patch = fbm(u, v, 5, 4);
-    const blotch = 1 - step(0.06, 0.22, spots(u, v, 7, 11)); // влажные пятна
-    const dirt = Math.pow(fbm(u + 0.2, v + 0.8, 8, 4), 2.4);
+    const fiber = vnoise(u, v, 240) * 0.6 + vnoise(u + 0.5, v + 0.5, 120) * 0.4;
+    const patch = fbm(u, v, 4, 4);
+    const blotch = 1 - step(0.09, 0.24, spots(u, v, 4, 11)); // редкие влажные пятна
+    const dirt = Math.pow(fbm(u + 0.2, v + 0.8, 7, 4), 3);
 
-    let r = 141, g = 117, b = 53;
-    const tone = mix(0.8, 1.12, fiber) * mix(0.85, 1.05, patch);
+    let r = 176, g = 158, b = 88;
+    const tone = mix(0.88, 1.08, fiber) * mix(0.94, 1.04, patch);
     r *= tone; g *= tone; b *= tone;
-    r = mix(r, 38, blotch * 0.7 + dirt * 0.5);
-    g = mix(g, 30, blotch * 0.7 + dirt * 0.5);
-    b = mix(b, 12, blotch * 0.7 + dirt * 0.5);
+    r = mix(r, 92, blotch * 0.45 + dirt * 0.3);
+    g = mix(g, 80, blotch * 0.45 + dirt * 0.3);
+    b = mix(b, 40, blotch * 0.45 + dirt * 0.3);
     o.r = r; o.g = g; o.b = b;
-    o.h = fiber * 0.55 + patch * 0.25 - blotch * 0.2;
-    o.rough = 0.97 - blotch * 0.45;
-  }, 1.4);
+    o.h = fiber * 0.5 + patch * 0.15 - blotch * 0.1;
+    o.rough = 0.97 - blotch * 0.2;
+  }, 1.2);
 }
 
 function ceilingTiles() {
   return bake(384, (u, v, o) => {
-    const gx = u * 4, gy = v * 4;
-    const fx = gx - Math.floor(gx), fy = gy - Math.floor(gy);
+    const T = 4;
+    const gx = u * T, gy = v * T;
+    const tx = Math.floor(gx), ty = Math.floor(gy);
+    const fx = gx - tx, fy = gy - ty;
     const edge = Math.min(fx, 1 - fx, fy, 1 - fy);
-    const grout = 1 - step(0.015, 0.05, edge);
+    const grout = 1 - step(0.012, 0.045, edge);
     const grain = fbm(u, v, 64, 3);
-    // ржавые разводы от воды
-    const stain = Math.pow(fbm(u + 0.6, v + 0.1, 4, 4), 2.6) * 1.5;
+    // часть плит подмокла: бурое кольцо, ползущее от краёв к центру
+    const tileHash = vnoise((tx + 0.5) / T + 0.13, (ty + 0.5) / T + 0.77, T * 4);
+    let stain = 0;
+    if (tileHash > 0.52) {
+      const wet = (tileHash - 0.52) / 0.48;
+      stain = clamp01((1 - edge * (3.2 - wet * 1.8)) * (0.4 + fbm(u * 2, v * 2, 9, 3)) * wet * 1.6);
+    }
 
-    let r = 208, g = 199, b = 168;
-    const tone = mix(0.92, 1.05, grain);
+    let r = 219, g = 212, b = 182;
+    const tone = mix(0.95, 1.04, grain);
     r *= tone; g *= tone; b *= tone;
-    r = mix(r, 122, clamp01(stain)); g = mix(g, 88, clamp01(stain)); b = mix(b, 42, clamp01(stain));
-    r = mix(r, 60, grout * 0.8); g = mix(g, 56, grout * 0.8); b = mix(b, 48, grout * 0.8);
+    r = mix(r, 128, stain); g = mix(g, 96, stain); b = mix(b, 52, stain);
+    r = mix(r, 96, grout * 0.7); g = mix(g, 92, grout * 0.7); b = mix(b, 80, grout * 0.7);
     o.r = r; o.g = g; o.b = b;
-    o.h = 0.6 - grout * 0.5 + grain * 0.1 - stain * 0.05;
+    o.h = 0.6 - grout * 0.5 + grain * 0.08 - stain * 0.06;
     o.rough = 0.95;
-  }, 1.6);
+  }, 1.5);
 }
 
 function concrete() {
@@ -444,8 +449,8 @@ export function themeMaterials(theme) {
       floor: setRepeat(std(carpet()), 22, 22),
       ceiling: setRepeat(std(ceilingTiles()), 22, 22),
       trim: new THREE.MeshStandardMaterial({ color: 0x6e5e2e, roughness: 0.7 }),
-      lightColor: new THREE.Color(0xfff2b8),
-      lightIntensity: 13,
+      lightColor: new THREE.Color(0xffedbe),
+      lightIntensity: 10,
     };
   } else if (theme === 'warehouse') {
     m = {

@@ -179,7 +179,7 @@ function plant(m) {
 // ---------- наборы по темам ----------
 
 const THEME_PROPS = {
-  yellow: { count: 26, make: (m, rng) => {
+  yellow: { count: 8, make: (m, rng) => {
     const r = rng();
     if (r < 0.3) return table(m);
     if (r < 0.6) return chair(m, m.plastic);

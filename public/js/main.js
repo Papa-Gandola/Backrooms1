@@ -38,6 +38,7 @@ let nearLocker = null;
 let lastWhisper = 0;
 let entityState = { x: -999, z: -999, state: 'roam' };
 let doorOpenClient = false;
+let scare = null; // { until, from } — 3D-скример: монстр бросается в камеру
 let seenPlates = new Set(); // таблички с символами, которые игрок уже видел
 
 // ---------- меню ----------
@@ -169,11 +170,23 @@ net.on('reaper', () => {
   UI.subtitles('ОНО ПРОСНУЛОСЬ. БЕГИТЕ.');
 });
 
+function startScare(durMs = 1300) {
+  audio.jumpscare();
+  player.frozen = true;
+  scare = { until: performance.now() + durMs, start: performance.now(), lunge: Math.min(450, durMs / 3) };
+  setTimeout(() => {
+    $('redFlash').style.opacity = 0;
+    $('deathScreen').classList.remove('hidden');
+    // сущность мгновенно возвращается туда, куда её отправил сервер
+    if (entityView) { entityView.cur.x = entityView.dst.x; entityView.cur.z = entityView.dst.z; }
+    scare = null;
+  }, durMs);
+  setTimeout(() => $('deathScreen').classList.add('hidden'), durMs + 2000);
+}
+
 net.on('caught', (m) => {
   if (m.slot === mySlot) {
-    audio.jumpscare();
-    UI.jumpscare(m.entity);
-    player.frozen = true;
+    startScare();
   } else {
     audio.distantScream();
     UI.subtitles(`${partnerName} кричит где-то в темноте...`);
@@ -284,6 +297,7 @@ function initGame() {
   requestAnimationFrame(loop);
   setInterval(() => { if (level) net.send(player.netState()); }, 80);
   window.__look = (pitch, yaw) => { player.pitch = pitch; if (yaw !== undefined) player.yaw = yaw; };
+  window.__scare = (dur) => { startScare(dur); setTimeout(() => { player.frozen = false; }, (dur || 1300) + 2100); };
   window.__diag = () => ({
     me: { x: player.pos.x, z: player.pos.z, yaw: player.yaw },
     partnerCur: { ...partner.cur },
@@ -492,7 +506,27 @@ function loop(t) {
   world.update(dt, player.pos);
   partner.update(dt);
   if (selfBody) selfBody.update(dt, player);
-  if (entityView) entityView.update(dt, player.pos);
+
+  if (scare && entityView) {
+    // бросок: модель летит в лицо с 1.9 м до 0.5 м
+    const k = Math.min(1, (performance.now() - scare.start) / (scare.lunge || 450));
+    const d = 2.2 - 1.15 * k * k; // останавливается у лица, а не внутри камеры
+    player.pitch += (0.32 - player.pitch) * 0.15; // взгляд задирается на морду
+    const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
+    const px = player.pos.x + fx * d, pz = player.pos.z + fz * d;
+    entityView.cur.x = entityView.dst.x = px;
+    entityView.cur.z = entityView.dst.z = pz;
+    entityView.state = 'hunt';
+    entityView.update(dt, player.pos);
+    // бешеная тряска камеры и красная пульсация
+    camera.rotation.x += (Math.random() - 0.5) * 0.10;
+    camera.rotation.y += (Math.random() - 0.5) * 0.10;
+    camera.rotation.z += (Math.random() - 0.5) * 0.14;
+    $('redFlash').style.opacity = 0.55 + Math.random() * 0.45;
+    if (grainPass) grainPass.uniforms.fear.value = 1;
+  } else if (entityView) {
+    entityView.update(dt, player.pos);
+  }
 
   // отмечаем таблички, к которым подошли
   if (level.puzzle.kind === 'glyphs') {

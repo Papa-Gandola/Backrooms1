@@ -357,6 +357,25 @@ export class World {
     this.scene.add(this.dust);
   }
 
+  // светящийся столб над квестовым предметом — видно издалека сквозь туман
+  _beacon(color, ceilH) {
+    const g = new THREE.Group();
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.16, 0.34, ceilH, 12, 1, true),
+      new THREE.MeshBasicMaterial({
+        color, transparent: true, opacity: 0.14,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+        side: THREE.DoubleSide, fog: false,
+      })
+    );
+    beam.position.y = ceilH / 2 - 0.4;
+    g.add(beam);
+    const pl = new THREE.PointLight(color, 4, 6, 1.8);
+    pl.position.y = 0.2;
+    g.add(pl);
+    return g;
+  }
+
   _buildItem(item, theme, ceilH) {
     let mesh;
     if (item.type === 'fuse') {
@@ -366,6 +385,7 @@ export class World {
       );
       mesh.position.set(item.x, 0.5, item.z);
       mesh.userData.bob = true;
+      mesh.add(this._beacon(0x36ff70, ceilH));
     } else if (item.type === 'fusebox') {
       mesh = new THREE.Group();
       const box = new THREE.Mesh(
@@ -478,6 +498,7 @@ export class World {
       mesh.position.set(item.x, 1.0, item.z);
       mesh.userData.bob = true;
       mesh.userData.bobBase = 1.0;
+      mesh.add(this._beacon(0xffd24a, ceilH));
     } else if (item.type === 'balloon') {
       mesh = new THREE.Group();
       const hue = (item.id.charCodeAt(item.id.length - 1) * 53) % 360;
@@ -497,6 +518,7 @@ export class World {
       mesh.position.set(item.x, 1.5, item.z);
       mesh.userData.bob = true;
       mesh.userData.bobBase = 1.5;
+      mesh.add(this._beacon(0xff6ab0, ceilH));
     } else if (item.type === 'switch') {
       mesh = new THREE.Group();
       const body = new THREE.Mesh(

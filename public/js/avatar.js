@@ -36,9 +36,11 @@ export class SelfBody {
 
   update(dt, player) {
     this.mesh.visible = !player.hidden;
-    // тело чуть позади камеры, чтобы не лезло в кадр
-    const bx = player.pos.x + Math.sin(player.yaw) * 0.14;
-    const bz = player.pos.z + Math.cos(player.yaw) * 0.14;
+    // тело позади камеры; при приседе — заметно дальше, иначе капюшон
+    // и грудь оказываются ВНУТРИ камеры и весь экран заливает жёлтым
+    const back = player.crouch ? 0.5 : 0.18;
+    const bx = player.pos.x + Math.sin(player.yaw) * back;
+    const bz = player.pos.z + Math.cos(player.yaw) * back;
     this.mesh.position.set(bx, 0, bz);
     this.mesh.rotation.y = player.yaw + Math.PI;
 
@@ -51,8 +53,8 @@ export class SelfBody {
 
     const b = this.char.bones;
     if (player.crouch) {
-      if (b.Spine) b.Spine.rotation.x += 0.45;
-      this.char.root.position.y = -0.32;
+      if (b.Spine) b.Spine.rotation.x += 0.15; // лёгкий наклон, не в камеру
+      this.char.root.position.y = -0.38;
     } else {
       this.char.root.position.y = 0;
     }

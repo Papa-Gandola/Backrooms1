@@ -73,24 +73,27 @@ class GameSession {
     };
   }
 
-  // Точка появления/отступления сущности: далеко от игроков и не у самого выхода,
-  // чтобы она не караулила ни спавн, ни портал.
+  // Точка появления/отступления сущности: вне поля зрения (>=14 м), но НЕ на другом
+  // конце карты — иначе после скримера её больше никогда не встретишь.
   entitySpot() {
     const g = this.level.grid;
     const refs = this.room.players.filter(p => p.pos).map(p => ({ x: p.pos.x, z: p.pos.z }));
     if (!refs.length) refs.push({ x: this.level.spawn.x, z: this.level.spawn.z });
     const exit = this.level.exit;
-    let best = null, bestScore = -1;
-    for (let i = 0; i < 200; i++) {
+    const band = [];
+    let fallback = null, fallbackD = -1;
+    for (let i = 0; i < 300; i++) {
       const gx = Math.floor(Math.random() * g.w), gz = Math.floor(Math.random() * g.h);
       if (!g.isWalkable(gx, gz)) continue;
       const x = (gx + 0.5) * CELL, z = (gz + 0.5) * CELL;
       const dPlayers = Math.min(...refs.map(r => Math.hypot(r.x - x, r.z - z)));
       const dExit = Math.hypot(exit.x - x, exit.z - z);
-      const score = Math.min(dPlayers, dExit * 1.5);
-      if (score > bestScore) { bestScore = score; best = { x, z }; }
+      if (dExit < 8) continue; // не караулим портал
+      if (dPlayers >= 14 && dPlayers <= 34) band.push({ x, z });
+      if (dPlayers > fallbackD) { fallbackD = dPlayers; fallback = { x, z }; }
     }
-    return best || { x: this.level.spawn.x, z: this.level.spawn.z };
+    if (band.length) return band[(Math.random() * band.length) | 0];
+    return fallback || { x: this.level.spawn.x, z: this.level.spawn.z };
   }
 
   farthestFromSpawn() {
@@ -414,13 +417,19 @@ class GameSession {
 
   roamOrFollow(e, dt) {
     e.repathIn -= dt;
-    if (e.repathIn <= 0) {
-      e.repathIn = e.state === 'roam' ? 1.2 : 0.45;
-      let goal = e.target;
-      if (e.state === 'roam' || !goal) {
-        goal = this.randomWalkable();
-        if (e.state !== 'roam') e.state = 'roam';
+    if (e.state === 'roam') {
+      // цель блуждания держим, пока не дойдём — иначе сущность топчется на месте,
+      // каждую секунду разворачиваясь к новой случайной точке
+      const arrived = !e.path || e.path.length === 0;
+      if (arrived || e.repathIn < -25) {
+        e.target = this.roamGoal();
+        e.path = this.findPath(e.x, e.z, e.target.x, e.target.z);
+        e.repathIn = 0;
+        if (!e.path.length) e.target = null; // тупик — в следующий тик новая цель
       }
+    } else if (e.repathIn <= 0) {
+      e.repathIn = 0.45;
+      const goal = e.target || this.roamGoal();
       e.path = this.findPath(e.x, e.z, goal.x, goal.z);
     }
     // движение по пути
@@ -436,6 +445,25 @@ class GameSession {
       remaining -= step;
       if (step >= d) e.path.shift();
     }
+  }
+
+  // Точка блуждания: в 60% случаев — окрестность одного из игроков (10–32 м),
+  // чтобы сущность кружила рядом и встречи действительно случались
+  roamGoal() {
+    const g = this.level.grid;
+    const players = this.room.players.filter(p => p.pos && !p.dead);
+    if (players.length && Math.random() < 0.6) {
+      const p = players[(Math.random() * players.length) | 0];
+      const pgx = Math.floor(p.pos.x / CELL), pgz = Math.floor(p.pos.z / CELL);
+      for (let i = 0; i < 60; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const r = 5 + Math.random() * 11;
+        const x = Math.round(pgx + Math.cos(ang) * r);
+        const z = Math.round(pgz + Math.sin(ang) * r);
+        if (g.isWalkable(x, z)) return { x: (x + 0.5) * CELL, z: (z + 0.5) * CELL };
+      }
+    }
+    return this.randomWalkable();
   }
 
   randomWalkable() {
