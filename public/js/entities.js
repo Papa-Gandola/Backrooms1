@@ -62,9 +62,16 @@ export class EntityView {
         g.add(this.char.root);
       });
     } else if (type === 'partygoer') {
-      // Партигёрл: жёлтый «весельчак» =) — замирает, пока на него смотрят
+      // Партигёрл =) — замирает, пока на него смотрят. Без шарика (канон ETB)
       loadMonster('partygoer').then(gltf => {
-        this.char = instantiateMonster(gltf, { height: 2.1 });
+        const balloons = [];
+        gltf.scene.traverse(o => {
+          if ((o.isMesh || o.isSkinnedMesh) && /baloon|balloon/i.test(o.name + (o.material?.name || ''))) {
+            balloons.push(o);
+          }
+        });
+        balloons.forEach(o => o.removeFromParent());
+        this.char = instantiateMonster(gltf, { height: 2.25 });
         g.add(this.char.root);
       });
     } else if (type === 'smiler') {
