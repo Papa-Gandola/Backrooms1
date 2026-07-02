@@ -5,7 +5,7 @@
 
 import * as THREE from 'three';
 import { smilerTexture } from './textures.js';
-import { createCharacter, makeEyesSprite, loadMonster, instantiateMonster } from './characters.js';
+import { createCharacter, makeEyesSprite, loadMonster, instantiateMonster, bakeStatic } from './characters.js';
 
 const _v = new THREE.Vector3();
 
@@ -27,16 +27,33 @@ export class EntityView {
   _build(type) {
     const g = this.group;
     if (type === 'wanderer') {
-      // Скиталец: бледная истощённая тварь с расщеплённой пастью
-      loadMonster('wanderer').then(gltf => {
-        this.char = instantiateMonster(gltf, { height: 2.45 });
+      // Бактерия (Kane Pixels): чёрный спутанный силуэт на тонких ногах
+      loadMonster('bacteria').then(gltf => {
+        this.char = instantiateMonster(gltf, { height: 2.7, tint: 0x0a0a0c, roughness: 0.35, metalness: 0.1 });
         g.add(this.char.root);
       });
     } else if (type === 'hound') {
-      // Гончая: глянцево-чёрный зверь с белой ухмылкой
-      loadMonster('hound').then(gltf => {
-        this.char = instantiateMonster(gltf, { height: 1.35, rotateY: Math.PI / 2 });
+      // Гончая: бледный ползун с окровавленной ухмылкой (своя анимация)
+      loadMonster('crawler').then(gltf => {
+        this.char = instantiateMonster(gltf, { height: 1.25 });
         g.add(this.char.root);
+      });
+    } else if (type === 'lurker') {
+      // Люркер: глянцево-чёрный зверь — хозяин уровня «Свет погас»
+      loadMonster('hound').then(gltf => {
+        this.char = instantiateMonster(gltf, { height: 1.55, rotateY: Math.PI / 2 });
+        g.add(this.char.root);
+      });
+    } else if (type === 'mannequin') {
+      // Манекен: неотличим от статуй-декораций (T-поза без анимации)
+      loadMonster('mannequin').then(gltf => {
+        const root = bakeStatic(gltf.scene);
+        const box = new THREE.Box3().setFromObject(root);
+        const s = 1.85 / Math.max(0.01, box.max.y - box.min.y);
+        root.scale.setScalar(s);
+        root.position.y = -box.min.y * s;
+        g.add(root);
+        this.statue = root;
       });
     } else if (type === 'wretch') {
       // Отверженный: красная безглазая тварь из отеля (свои анимации)
@@ -125,7 +142,8 @@ export class EntityView {
       this.group.rotation.y = Math.atan2(playerPos.x - this.cur.x, playerPos.z - this.cur.z);
     }
 
-    if (this.type === 'wanderer') this._animWanderer(dt, speed);
+    if (this.type === 'wanderer') this._animBacteria(dt, speed);
+    else if (this.type === 'lurker') this._animHound(dt, speed);
     else if (this.type === 'wretch') this._animWretch(dt, speed);
     else if (this.type === 'partygoer') this._animPartygoer(dt, speed);
     else if (this.type === 'hound') this._animHound(dt, speed);
@@ -140,18 +158,17 @@ export class EntityView {
     if (this.glow) this.glow.intensity = 7 + Math.sin(this.time * 13) * 2.5;
   }
 
-  _animWanderer(dt, speed) {
+  _animBacteria(dt, speed) {
     if (!this.char) return;
-    // у модели один клип Idle — тварь «скользит», что выглядит только страшнее
+    // модель без скелета: рваное скольжение — дёргается, кренится, подпрыгивает
     const hunting = this.state === 'hunt';
-    this.char.play('idle', 0.3, hunting ? 2.2 : 1);
+    const f = hunting ? 9 : 4;
+    this.char.root.position.y = Math.abs(Math.sin(this.time * f)) * 0.09;
+    this.char.root.rotation.z = Math.sin(this.time * f * 0.7) * 0.07 + Math.sin(this.time * 13) * 0.02;
+    this.char.root.rotation.x = (hunting ? 0.12 : 0.03) + Math.sin(this.time * f * 0.4) * 0.03;
+    // резкие мелкие развороты — фирменная дёрганность Бактерии
+    this.char.root.rotation.y += Math.sin(this.time * 17) * 0.012;
     this.char.mixer.update(dt);
-    // наклон вперёд и нервное покачивание в погоне
-    this.char.root.rotation.x = hunting ? 0.18 : 0.04 + Math.sin(this.time * 0.9) * 0.02;
-    this.char.root.rotation.z = Math.sin(this.time * (hunting ? 7 : 1.6)) * (hunting ? 0.05 : 0.02);
-    if (this.char.head) {
-      this.char.head.rotation.z += Math.sin(this.time * 2.3) * 0.1 + Math.sin(this.time * 17) * 0.03;
-    }
   }
 
   _animWretch(dt, speed) {
@@ -173,7 +190,13 @@ export class EntityView {
 
   _animHound(dt, speed) {
     if (!this.char) return;
-    // скелет без клипов: процедурный галоп — раскачка и рывки корпусом
+    if (this.type === 'hound') {
+      // ползун: собственная анимация ползания, темп по скорости
+      this.char.play('walk', 0.2, Math.max(0.6, speed / 2.2));
+      this.char.mixer.update(dt);
+      return;
+    }
+    // люркер (скелет без клипов): процедурный галоп
     const chase = this.state === 'chase';
     const gallop = Math.min(1, speed / 3);
     const f = chase ? 11 : 5;

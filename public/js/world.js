@@ -6,6 +6,7 @@ import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js'
 import { themeMaterials, waterNormalTexture } from './materials.js';
 import { plateTexture } from './textures.js';
 import { scatterProps } from './props.js';
+import { loadMonster, bakeStatic } from './characters.js';
 
 const FLOOR = 0, WALL = 1, WATER = 2;
 
@@ -22,6 +23,8 @@ export class World {
     this.doorOpen = false;
     this.time = 0;
     this.dust = null;
+    this.eventKind = null;   // 'siren' | 'blackout'
+    this.eventUntil = 0;
   }
 
   clear() {
@@ -38,6 +41,8 @@ export class World {
     this.lightPool = [];
     this.propColliders = [];
     this.doorOpen = false;
+    this.eventKind = null;
+    this.eventUntil = 0;
   }
 
   build(level) {
@@ -178,6 +183,7 @@ export class World {
     // ---- тематический декор ----
     if (level.theme === 'hotel') this._buildHotelDoors(get, walkable, C, W, H);
     if (level.theme === 'party') this._buildPartyDecor(walkable, C, W, H, ceilH);
+    if (level.theme === 'mall') this._buildMannequins(walkable, C, W, H, level.seedVal || 1);
 
     // ---- светильники ----
     this._buildFixtures(level, theme, ceilH);
@@ -272,6 +278,42 @@ export class World {
       group.add(cluster);
     }
     this.group.add(group);
+  }
+
+  // статуи-манекены: их много, все в T-позе — и живой среди них неотличим
+  _buildMannequins(walkable, C, W, H, seedVal) {
+    let s = (seedVal ^ 0x51ed270b) >>> 0;
+    const rng = () => {
+      s |= 0; s = (s + 0x6D2B79F5) | 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const spots = [];
+    for (let i = 0; i < 400 && spots.length < 14; i++) {
+      const gx = 1 + Math.floor(rng() * (W - 2));
+      const gz = 1 + Math.floor(rng() * (H - 2));
+      if (!walkable(gx, gz)) continue;
+      const x = (gx + 0.5) * C + (rng() - 0.5) * 0.8;
+      const z = (gz + 0.5) * C + (rng() - 0.5) * 0.8;
+      if (spots.some(p => Math.hypot(p.x - x, p.z - z) < 4)) continue;
+      spots.push({ x, z, rot: rng() * Math.PI * 2 });
+    }
+    const group = new THREE.Group();
+    this.group.add(group);
+    loadMonster('mannequin').then(gltf => {
+      const baked = bakeStatic(gltf.scene);
+      const box = new THREE.Box3().setFromObject(baked);
+      const sc = 1.85 / Math.max(0.01, box.max.y - box.min.y);
+      for (const p of spots) {
+        const clone = baked.clone(); // геометрия общая — дёшево
+        clone.scale.setScalar(sc);
+        clone.position.set(p.x, -box.min.y * sc, p.z);
+        clone.rotation.y = p.rot;
+        group.add(clone);
+        this.propColliders.push({ x: p.x, z: p.z, r: 0.35 });
+      }
+    });
   }
 
   _buildFixtures(level, theme, ceilH) {
@@ -462,6 +504,49 @@ export class World {
       screen.position.set(0, 1.45, 0.1);
       mesh.add(screen);
       mesh.position.set(item.x, 0, item.z);
+    } else if (item.type === 'badge') {
+      mesh = new THREE.Group();
+      const card = new THREE.Mesh(
+        new THREE.BoxGeometry(0.26, 0.36, 0.02),
+        new THREE.MeshStandardMaterial({ color: 0xe8e4d8, roughness: 0.4, emissive: 0x3a6ea8, emissiveIntensity: 0.5 })
+      );
+      mesh.add(card);
+      const stripe = new THREE.Mesh(
+        new THREE.BoxGeometry(0.26, 0.07, 0.021),
+        new THREE.MeshStandardMaterial({ color: 0x2a3a6e, roughness: 0.4 })
+      );
+      stripe.position.y = 0.1;
+      mesh.add(stripe);
+      mesh.position.set(item.x, 1.1, item.z);
+      mesh.userData.bob = true;
+      mesh.userData.bobBase = 1.1;
+      mesh.add(this._beacon(0x4a9aff, ceilH));
+    } else if (item.type === 'valve' && this.level.theme === 'lightsout') {
+      // генератор: ящик с рукоятью и лампочкой
+      mesh = new THREE.Group();
+      const body = new THREE.Mesh(
+        new THREE.BoxGeometry(1.0, 1.1, 0.7),
+        new THREE.MeshStandardMaterial({ color: 0x35383c, roughness: 0.5, metalness: 0.7 })
+      );
+      body.position.y = 0.55;
+      mesh.add(body);
+      const wheel = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.16, 0.16, 0.1, 12),
+        new THREE.MeshStandardMaterial({ color: 0xa03030, roughness: 0.4, metalness: 0.6 })
+      );
+      wheel.rotation.z = Math.PI / 2;
+      wheel.position.set(0.55, 0.7, 0);
+      mesh.add(wheel);
+      mesh.userData.wheel = wheel;
+      const lamp = new THREE.Mesh(
+        new THREE.SphereGeometry(0.06, 8, 6),
+        new THREE.MeshStandardMaterial({ emissive: 0xff2222, emissiveIntensity: 2 })
+      );
+      lamp.position.set(0, 1.25, 0);
+      mesh.add(lamp);
+      mesh.userData.lamp = lamp;
+      mesh.position.set(item.x, 0, item.z);
+      mesh.add(this._beacon(0xff4422, ceilH));
     } else if (item.type === 'valve') {
       mesh = new THREE.Group();
       const pipe = new THREE.Mesh(
@@ -576,6 +661,11 @@ export class World {
     this.exitMesh = g;
   }
 
+  setEvent(kind, dur) {
+    this.eventKind = kind;
+    this.eventUntil = this.time + dur;
+  }
+
   setDoorOpen() {
     this.doorOpen = true;
     if (this.exitGlowMat) {
@@ -605,6 +695,9 @@ export class World {
     this.time += dt;
     if (!this.level) return;
 
+    // активное событие?
+    const ev = this.eventUntil > this.time ? this.eventKind : null;
+
     // пул источников света к ближайшим рабочим плафонам
     const working = this.fixtures.filter(f => !f.broken);
     working.sort((a, b) =>
@@ -616,18 +709,32 @@ export class World {
       if (!f) { pl.intensity = 0; continue; }
       pl.position.x = f.x; pl.position.z = f.z;
       let inten = this.theme.lightIntensity;
+      let emiss = 0.95;
       if (f.flicker) {
         const v = Math.sin(this.time * 19 + f.phase) + Math.sin(this.time * 47 + f.phase * 2);
         if (v > 1.55) inten *= 0.15;
         else if (v > 1.2) inten *= 0.55;
-        f.mesh.material.emissiveIntensity = inten / this.theme.lightIntensity * 0.95;
+        emiss = inten / this.theme.lightIntensity * 0.95;
       }
-      // аварийные мигалки финала пульсируют
       if (this.level.theme === 'final') {
         inten *= 0.6 + 0.4 * Math.sin(this.time * 5 + f.phase);
       }
+      // события: сирена заливает всё пульсирующим красным, блэкаут гасит свет
+      if (ev === 'siren') {
+        pl.color.set(0xff1e14);
+        inten = Math.max(inten, this.theme.lightIntensity) * (0.45 + 0.55 * Math.abs(Math.sin(this.time * 4)));
+        emiss = 0.5 + 0.5 * Math.abs(Math.sin(this.time * 4));
+        f.mesh.material.emissive.set(0xff2018);
+      } else if (ev === 'blackout') {
+        inten = 0;
+        emiss = 0.02;
+        f.mesh.material.emissive.copy(this.theme.lightColor);
+      } else {
+        pl.color.copy(this.theme.lightColor);
+        f.mesh.material.emissive.copy(this.theme.lightColor);
+      }
+      f.mesh.material.emissiveIntensity = emiss;
       pl.intensity = inten;
-      pl.color.copy(this.theme.lightColor);
     }
 
     // покачивание подбираемых предметов

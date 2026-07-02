@@ -23,12 +23,31 @@ class GameSession {
 
   destroy() {
     clearInterval(this.timer);
+    clearTimeout(this.eventTimer);
+  }
+
+  // случайные события: сирена с красным светом (сущность звереет) или блэкаут
+  _scheduleEvent() {
+    clearTimeout(this.eventTimer);
+    if (this.levelIndex === 0) return; // уровень 0 — чистый канон, без событий
+    const dark = this.level.theme === 'lightsout';
+    const delay = dark ? 45000 + Math.random() * 35000 : 70000 + Math.random() * 60000;
+    this.eventTimer = setTimeout(() => {
+      if (this.finished || !this.level) return;
+      const kind = Math.random() < (dark ? 0.7 : 0.5) ? 'siren' : 'blackout';
+      const dur = kind === 'siren' ? 18 : 12;
+      this.room.broadcast({ t: 'event', kind, dur });
+      if (kind === 'siren') this.rageUntil = Date.now() + dur * 1000;
+      this._scheduleEvent();
+    }, delay);
   }
 
   startLevel(index) {
     this.levelIndex = index;
     this.level = genLevel(index, this.seed);
     this.doorOpen = false;
+    this.rageUntil = 0;
+    this._scheduleEvent();
     this.initPuzzle();
     this.initEntity();
     for (const p of this.room.players) {
@@ -399,6 +418,55 @@ class GameSession {
         e.target = { x: nearest.pos.x, z: nearest.pos.z };
         this.roamOrFollow(e, dt);
       }
+    } else if (e.type === 'mannequin') {
+      // статуя: перемещается ТОЛЬКО когда ни один игрок на неё не смотрит
+      let watched = false;
+      for (const p of players) {
+        const d2v = dist2(e.x, e.z, p.pos.x, p.pos.z);
+        if (d2v > 30 * 30) continue;
+        if (!this.lineOfSight(p.pos.x, p.pos.z, e.x, e.z)) continue;
+        const ang = Math.atan2(e.x - p.pos.x, e.z - p.pos.z);
+        const diff = Math.abs(normAngle(ang - p.yaw - Math.PI));
+        if (diff < 0.75) { watched = true; break; }
+      }
+      if (watched) { e.state = 'frozen'; return; }
+      let nearest = null, nd = Infinity;
+      for (const p of players) {
+        const d2v = dist2(e.x, e.z, p.pos.x, p.pos.z);
+        if (d2v < nd) { nd = d2v; nearest = p; }
+      }
+      if (nearest && nd < 40 * 40) {
+        e.state = 'hunt';
+        e.speed = nd < 8 * 8 ? 3.6 : 2.2;
+        e.target = { x: nearest.pos.x, z: nearest.pos.z };
+        this.roamOrFollow(e, dt);
+      } else {
+        e.state = 'roam';
+        e.speed = 1.6;
+        this.roamOrFollow(e, dt);
+      }
+    } else if (e.type === 'lurker') {
+      // хозяин тьмы: издалека видит фонарь, слышит шаги; без света почти слеп
+      e.speed = e.state === 'chase' ? 4.5 : 2.0;
+      let spotted = null;
+      for (const p of players) {
+        if (p.hidden) continue;
+        const d2v = dist2(e.x, e.z, p.pos.x, p.pos.z);
+        const seesLight = p.light && d2v < 24 * 24 && this.lineOfSight(e.x, e.z, p.pos.x, p.pos.z);
+        const hears = p.moving && !p.crouch && d2v < 11 * 11;
+        const veryClose = d2v < 3.5 * 3.5;
+        if (seesLight || hears || veryClose) { spotted = p; break; }
+      }
+      if (spotted) {
+        e.state = 'chase';
+        e.target = { x: spotted.pos.x, z: spotted.pos.z };
+        e.lastSeen = 5;
+        e.repathIn = Math.min(e.repathIn, 0.25);
+      } else if (e.state === 'chase') {
+        e.lastSeen -= dt;
+        if (e.lastSeen <= 0) e.state = 'roam';
+      }
+      this.roamOrFollow(e, dt);
     } else if (e.type === 'reaper') {
       // финальная погоня: всегда преследует ближайшего
       e.speed = 4.6; // чуть медленнее спринта игрока — шанс есть, пока есть выносливость
@@ -432,8 +500,9 @@ class GameSession {
       const goal = e.target || this.roamGoal();
       e.path = this.findPath(e.x, e.z, goal.x, goal.z);
     }
-    // движение по пути
-    let remaining = e.speed * dt;
+    // движение по пути (во время сирены сущность звереет)
+    const rage = this.rageUntil && Date.now() < this.rageUntil ? 1.35 : 1;
+    let remaining = e.speed * rage * dt;
     while (remaining > 0 && e.path && e.path.length) {
       const wp = e.path[0];
       const dx = wp.x - e.x, dz = wp.z - e.z;

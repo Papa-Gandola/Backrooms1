@@ -170,6 +170,14 @@ net.on('reaper', () => {
   UI.subtitles('ОНО ПРОСНУЛОСЬ. БЕГИТЕ.');
 });
 
+net.on('event', (m) => {
+  world.setEvent(m.kind, m.dur);
+  audio.playEvent(m.kind, m.dur);
+  UI.subtitles(m.kind === 'siren'
+    ? 'СИРЕНА. ОНО В ЯРОСТИ — ПРЯЧЬТЕСЬ.'
+    : 'свет погас... держитесь вместе.', m.dur * 1000);
+});
+
 function startScare(durMs = 1300) {
   audio.jumpscare();
   player.frozen = true;
@@ -393,16 +401,17 @@ function updateInventoryUI() {
     UI.setInventory('');
   } else if (pk === 'valves') {
     const done = puzzleState?.done?.length || 0;
-    tasks.push({ text: 'Открыть вентили (держать E)', progress: [done, 3], done: done >= 3, active: done < 3 });
-    exitTask('Дойти до шлюза ВДВОЁМ');
-    UI.setInventory('Остерегайтесь двойника: настоящий напарник отвечает на [Q]');
+    const isGen = level.theme === 'lightsout';
+    tasks.push({ text: isGen ? 'Запустить генераторы (держать E)' : 'Открыть вентили (держать E)', progress: [done, 3], done: done >= 3, active: done < 3 });
+    exitTask(isGen ? 'Дойти до щитовой ВДВОЁМ' : 'Дойти до шлюза ВДВОЁМ');
+    UI.setInventory(isGen ? 'Фонарь помогает искать — и выдаёт вас Люркеру' : 'Остерегайтесь двойника: настоящий напарник отвечает на [Q]');
   } else if (pk === 'collect') {
     const got = puzzleState?.got?.length || 0;
     const need = level.puzzle.need;
-    const what = level.puzzle.itemType === 'key' ? 'Найти ключи в номерах' : 'Собрать шарики';
-    tasks.push({ text: what, progress: [got, need], done: got >= need, active: got < need });
-    exitTask(level.puzzle.itemType === 'key' ? 'Дойти до лифта ВДВОЁМ' : 'Выйти через портал ВДВОЁМ');
-    UI.setInventory('');
+    const names2 = { key: 'Найти ключи в номерах', balloon: 'Собрать шарики', badge: 'Найти пропуска' };
+    tasks.push({ text: names2[level.puzzle.itemType] || 'Собрать предметы', progress: [got, need], done: got >= need, active: got < need });
+    exitTask(level.puzzle.itemType === 'key' ? 'Дойти до лифта ВДВОЁМ' : 'Выйти ВДВОЁМ');
+    UI.setInventory(level.puzzle.itemType === 'badge' ? 'Один из манекенов — не манекен' : '');
   } else if (pk === 'switches') {
     const done = puzzleState?.done?.length || 0;
     tasks.push({ text: 'Включить рубильники', progress: [done, 4], done: done >= 4, active: done < 4 });

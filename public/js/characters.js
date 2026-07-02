@@ -180,6 +180,35 @@ export function loadMonster(kind) {
   return p;
 }
 
+// Запекает скиновый меш в обычный статичный (для статуй-манекенов):
+// SkeletonUtils.clone на этом риге схлопывает модель, а статуе скелет и не нужен
+export function bakeStatic(scene) {
+  scene.updateMatrixWorld(true);
+  const group = new THREE.Group();
+  const v = new THREE.Vector3();
+  scene.traverse(o => {
+    if (o.isSkinnedMesh) {
+      const geo = o.geometry.clone();
+      const pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i);
+        o.applyBoneTransform(i, v);
+        pos.setXYZ(i, v.x, v.y, v.z);
+      }
+      geo.computeVertexNormals();
+      const mesh = new THREE.Mesh(geo, o.material);
+      mesh.castShadow = true;
+      group.add(mesh);
+    } else if (o.isMesh) {
+      const mesh = new THREE.Mesh(o.geometry, o.material);
+      mesh.applyMatrix4(o.matrixWorld);
+      mesh.castShadow = true;
+      group.add(mesh);
+    }
+  });
+  return group;
+}
+
 // Подбор клипа по роли: у каждой модели свои имена анимаций
 const ROLE_PATTERNS = {
   idle: [/^idle$/i, /idle/i],
@@ -196,9 +225,11 @@ export function instantiateMonster(gltf, opts = {}) {
     if (o.isMesh || o.isSkinnedMesh) {
       o.castShadow = true;
       o.frustumCulled = false;
-      if (opts.tint && o.material) {
+      if ((opts.tint || opts.roughness !== undefined) && o.material) {
         o.material = o.material.clone();
-        o.material.color = new THREE.Color(opts.tint);
+        if (opts.tint) o.material.color = new THREE.Color(opts.tint);
+        if (opts.roughness !== undefined) o.material.roughness = opts.roughness;
+        if (opts.metalness !== undefined) o.material.metalness = opts.metalness;
       }
     }
   });
@@ -220,6 +251,13 @@ export function instantiateMonster(gltf, opts = {}) {
       const clip = gltf.animations.find(c => re.test(c.name));
       if (clip) { actions[role] = mixer.clipAction(clip); break; }
     }
+  }
+  // у модели один безымянный клип — используем его для всех ролей
+  if (!actions.walk && gltf.animations.length) {
+    const only = mixer.clipAction(gltf.animations[0]);
+    actions.walk = actions.walk || only;
+    actions.idle = actions.idle || only;
+    actions.run = actions.run || only;
   }
 
   // голова для глаз/наклонов (по имени или самая высокая кость)

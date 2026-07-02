@@ -107,7 +107,7 @@ async function completeLevel(a, b) {
   log(`дверь открыта (${lv.puzzle.kind})`);
 
   // оба идут к выходу; повторяем state, пока не придёт descend/victory
-  const isLast = lv.index === 6;
+  const isLast = lv.index === 8;
   const done = (isLast ? a.wait('victory', 30000) : a.wait('descend', 30000));
   const pump = setInterval(() => {
     if (!a.dead) a.moveTo(lv.exit.x, lv.exit.z);
@@ -137,7 +137,7 @@ async function completeLevel(a, b) {
   await a.wait('level');
   await sleep(200); // b тоже получает level
 
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < 9; i++) {
     if (!a.level || a.level.index !== i) {
       await a.wait('level');
       await sleep(200);

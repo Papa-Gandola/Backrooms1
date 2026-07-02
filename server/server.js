@@ -17,7 +17,7 @@ app.use('/vendor/three', express.static(path.join(__dirname, '..', 'node_modules
 // отладка: выдать сгенерированный уровень без игры (для /debug-world.html)
 const { genLevel, serializeLevel } = require('./levels');
 app.get('/debug-level', (req, res) => {
-  const index = Math.min(6, Math.max(0, parseInt(req.query.index || '0', 10)));
+  const index = Math.min(8, Math.max(0, parseInt(req.query.index || '0', 10)));
   const seed = parseInt(req.query.seed || '12345', 10);
   res.json(serializeLevel(genLevel(index, seed)));
 });
@@ -95,7 +95,7 @@ function handle(p, m) {
       if (p.room) return;
       p.name = sanitizeName(m.name);
       const room = new Room(makeCode());
-      if (m.resume && Number.isInteger(m.resume.level) && m.resume.level >= 0 && m.resume.level <= 6) {
+      if (m.resume && Number.isInteger(m.resume.level) && m.resume.level >= 0 && m.resume.level <= 8) {
         room.resume = { seed: (m.resume.seed >>> 0), level: m.resume.level };
       }
       rooms.set(room.code, room);

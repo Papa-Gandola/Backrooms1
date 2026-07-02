@@ -498,6 +498,24 @@ export function themeMaterials(theme) {
       lightColor: new THREE.Color(0xffe9f0),
       lightIntensity: 10,
     };
+  } else if (theme === 'mall') {
+    m = {
+      wall: setRepeat(std(whiteTiles()), 1, 1),
+      floor: setRepeat(std(partyFloor()), 22, 22),
+      ceiling: new THREE.MeshStandardMaterial({ color: 0x8a877e, roughness: 0.9 }),
+      trim: new THREE.MeshStandardMaterial({ color: 0x55524a, roughness: 0.5, metalness: 0.4 }),
+      lightColor: new THREE.Color(0xf2f0e4),
+      lightIntensity: 14,
+    };
+  } else if (theme === 'lightsout') {
+    m = {
+      wall: setRepeat(std(concrete()), 1, 1.4),
+      floor: setRepeat(std(concrete()), 16, 16),
+      ceiling: new THREE.MeshStandardMaterial({ color: 0x0a0a0c, roughness: 0.95 }),
+      trim: new THREE.MeshStandardMaterial({ color: 0x111114, roughness: 0.7 }),
+      lightColor: new THREE.Color(0x808898),
+      lightIntensity: 5,
+    };
   } else {
     m = {
       wall: setRepeat(std(officeWall()), 1, 1),

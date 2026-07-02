@@ -215,6 +215,19 @@ const THEME_PROPS = {
     if (r < 0.9) return present(m, rng);
     return table(m);
   } },
+  mall: { count: 20, make: (m, rng) => {
+    const r = rng();
+    if (r < 0.35) return cabinet(m);   // стеллажи-витрины
+    if (r < 0.6) return table(m);      // прилавки
+    if (r < 0.8) return crate(m);      // коробки товара
+    return bench(m);
+  } },
+  lightsout: { count: 14, make: (m, rng) => {
+    const r = rng();
+    if (r < 0.45) return barrel(m, m.rustyBarrel);
+    if (r < 0.75) return crate(m);
+    return cabinet(m);
+  } },
   final: { count: 10, make: (m, rng) => {
     // опрокинутая мебель
     const p = rng() < 0.5 ? chair(m, m.fabricRed) : cabinet(m);

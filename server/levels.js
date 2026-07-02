@@ -252,6 +252,16 @@ function genParty(rng, w, h) {
   return genRoomMaze(rng, w, h, 8, 0.8, 0.012);
 }
 
+// Торговый зал: просторные отделы с широкими проходами
+function genMall(rng, w, h) {
+  return genRoomMaze(rng, w, h, 12, 0.92, 0.02);
+}
+
+// «Свет погас»: комнатный лабиринт под кромешную тьму
+function genLightsOut(rng, w, h) {
+  return genRoomMaze(rng, w, h, 7, 0.6, 0.05);
+}
+
 // Финальный коридор
 function genFinal(rng, len) {
   const w = len, h = 11;
@@ -439,8 +449,46 @@ function genLevel(index, seed) {
       puzzle: { kind: 'collect', itemType: 'balloon', need: 5 },
       ceilH: 3.4, fog: { color: 0x8a7868, density: 0.055 }, ambient: 0.32,
     };
+  } else if (index === 6) {
+    // УРОВЕНЬ 6 — ТОРГОВЫЙ ЗАЛ. Манекены. Один из них живой.
+    grid = genMall(rng, 48, 48);
+    const spawn = findSpawn(grid, rng);
+    ensureConnected(grid, spawn.gx, spawn.gz);
+    const far = farthestCell(grid, spawn.gx, spawn.gz);
+    const exit = toWorld(far.x, far.z);
+    const cands = cellsBeyond(grid, spawn.gx, spawn.gz, 14);
+    const badges = pickSpread(rng, cands, 4, 14);
+    const items = badges.map((c, i) => ({ id: 'badge' + i, type: 'badge', ...toWorld(c.x, c.z) }));
+    level = {
+      name: 'УРОВЕНЬ 6 — ТОРГОВЫЙ ЗАЛ',
+      hint: 'Найдите 4 пропуска, чтобы открыть служебный выход. В зале десятки манекенов. Они стоят неподвижно... пока вы на них СМОТРИТЕ. Запоминайте, где кто стоял.',
+      theme: 'mall', grid, spawn, exit, items,
+      lights: placeLights(rng, grid, 5, 2, 0.22),
+      entity: { type: 'mannequin' },
+      puzzle: { kind: 'collect', itemType: 'badge', need: 4 },
+      ceilH: 4.0, fog: { color: 0x9a958a, density: 0.045 }, ambient: 0.45,
+    };
+  } else if (index === 7) {
+    // УРОВЕНЬ 7 — СВЕТ ПОГАС. Кромешная тьма и Люркер.
+    grid = genLightsOut(rng, 44, 44);
+    const spawn = findSpawn(grid, rng);
+    ensureConnected(grid, spawn.gx, spawn.gz);
+    const far = farthestCell(grid, spawn.gx, spawn.gz);
+    const exit = toWorld(far.x, far.z);
+    const cands = cellsBeyond(grid, spawn.gx, spawn.gz, 14);
+    const gens = pickSpread(rng, cands, 3, 16);
+    const items = gens.map((c, i) => ({ id: 'valve' + i, type: 'valve', ...toWorld(c.x, c.z) }));
+    level = {
+      name: 'УРОВЕНЬ 7 — СВЕТ ПОГАС',
+      hint: 'Электричества нет. Совсем. Запустите 3 генератора (держите E), чтобы открыть щитовую. Люркер живёт в этой темноте — он видит ваш фонарь издалека, но без света вы не найдёте генераторы. Выбирайте.',
+      theme: 'lightsout', grid, spawn, exit, items,
+      lights: placeLights(rng, grid, 6, 2, 1.0),
+      entity: { type: 'lurker' },
+      puzzle: { kind: 'valves', need: 3, holdTime: 4 },
+      ceilH: 3.2, fog: { color: 0x020204, density: 0.1 }, ambient: 0.02,
+    };
   } else {
-    // УРОВЕНЬ 6 — ИСХОД. Финальная погоня.
+    // УРОВЕНЬ 8 — ИСХОД. Финальная погоня.
     grid = genFinal(rng, 64);
     const spawn = { gx: 2, gz: 5, ...toWorld(2, 5) };
     const exit = toWorld(62, 5);
@@ -453,7 +501,7 @@ function genLevel(index, seed) {
       items.push({ id: 'switch' + i, type: 'switch', ...toWorld(x, gz) });
     });
     level = {
-      name: 'УРОВЕНЬ 6 — ИСХОД',
+      name: 'УРОВЕНЬ 8 — ИСХОД',
       hint: 'Включите 4 рубильника вдоль коридора и доберитесь до лифта. НЕ ОСТАНАВЛИВАЙТЕСЬ. ОНО УЖЕ ЗДЕСЬ.',
       theme: 'final', grid, spawn, exit, items,
       // лампы вручную вдоль коридора — он слишком узкий для сетки placeLights
@@ -513,6 +561,6 @@ function serializeLevel(level) {
   };
 }
 
-const LEVEL_COUNT = 7;
+const LEVEL_COUNT = 9;
 
 module.exports = { genLevel, serializeLevel, LEVEL_COUNT, CELL, FLOOR, WALL, WATER, bfsDistances };

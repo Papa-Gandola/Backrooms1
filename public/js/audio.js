@@ -27,7 +27,7 @@ export class AudioEngine {
 
   // настоящие записи (найдены в открытых источниках); при сбое остаётся синтез
   async _loadSamples() {
-    const files = { scream: '/sounds/scream.mp3', scream2: '/sounds/scream2.ogg', growl: '/sounds/growl.ogg', siren: '/sounds/siren.ogg' };
+    const files = { scream: '/sounds/scream.mp3', scream2: '/sounds/scream2.ogg', growl: '/sounds/growl.ogg', siren: '/sounds/siren.ogg', partymusic: '/sounds/partymusic.ogg' };
     for (const [name, url] of Object.entries(files)) {
       try {
         const buf = await (await fetch(url)).arrayBuffer();
@@ -145,8 +145,43 @@ export class AudioEngine {
       this._creakLoop();
     }
     if (theme === 'party') {
-      // расстроенная музыкальная шкатулка
-      this._musicBoxLoop(0);
+      // настоящая карусельная музыка (если загрузилась), иначе шкатулка
+      if (this.samples?.partymusic) {
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.samples.partymusic;
+        src.loop = true;
+        const g = this.ctx.createGain();
+        g.gain.value = 0.16;
+        src.connect(g).connect(this.master);
+        src.start(t);
+        this.ambNodes.push(src, g);
+      } else {
+        this._musicBoxLoop(0);
+      }
+    }
+    if (theme === 'mall') {
+      // мёртвая тишина торгового зала: гул вентиляции + редкое потрескивание
+      const src = this.ctx.createBufferSource();
+      src.buffer = this._noiseBuffer(4); src.loop = true;
+      const f = this.ctx.createBiquadFilter();
+      f.type = 'lowpass'; f.frequency.value = 260;
+      const g = this.ctx.createGain(); g.gain.value = 0.02;
+      src.connect(f).connect(g).connect(this.master);
+      src.start(t);
+      this.ambNodes.push(src, g);
+      this._creakLoop();
+    }
+    if (theme === 'lightsout') {
+      // редкие щелчки мёртвой проводки в кромешной тьме
+      const buzz = this.ctx.createOscillator();
+      buzz.type = 'sawtooth'; buzz.frequency.value = 50;
+      const bf = this.ctx.createBiquadFilter();
+      bf.type = 'lowpass'; bf.frequency.value = 90;
+      const bg = this.ctx.createGain(); bg.gain.value = 0.02;
+      buzz.connect(bf).connect(bg).connect(this.master);
+      buzz.start(t);
+      this.ambNodes.push(buzz, bg);
+      this._creakLoop();
     }
     if (theme === 'final') {
       // тревожная сирена вдалеке
@@ -316,6 +351,37 @@ export class AudioEngine {
       this.heartTimer = setTimeout(beat, 850);
     };
     beat();
+  }
+
+  // событие уровня: сирена или блэкаут
+  playEvent(kind, dur) {
+    if (!this.ctx) return;
+    if (kind === 'siren') {
+      if (this.samples?.siren) {
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.samples.siren;
+        src.loop = true;
+        const g = this.ctx.createGain();
+        g.gain.value = 0.35;
+        src.connect(g).connect(this.master);
+        src.start();
+        src.stop(this.ctx.currentTime + dur);
+      } else {
+        // запасная синтетическая сирена
+        const t = this.ctx.currentTime;
+        const o = this.ctx.createOscillator();
+        o.type = 'sawtooth'; o.frequency.value = 400;
+        const lfo = this.ctx.createOscillator(); lfo.frequency.value = 0.6;
+        const lg = this.ctx.createGain(); lg.gain.value = 180;
+        lfo.connect(lg).connect(o.frequency);
+        const g = this.ctx.createGain(); g.gain.value = 0.12;
+        o.connect(g).connect(this.master);
+        o.start(t); lfo.start(t);
+        o.stop(t + dur); lfo.stop(t + dur);
+      }
+    } else {
+      this._thud(0.6);
+    }
   }
 
   // ---------- одиночные эффекты ----------
