@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<!-- Тест луча фонаря: /debug-flash.html?cookie=0|1 -->
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<style>body { margin: 0; background: #000; }</style>
+<script type="importmap">
+{ "imports": { "three": "/vendor/three/build/three.module.js", "three/addons/": "/vendor/three/examples/jsm/" } }
+</script>
+</head>
+<body>
+<script type="module">
+import * as THREE from 'three';
+import { makeFlashCookie } from './js/player.js';
+
+const q = new URLSearchParams(location.search);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.AgXToneMapping;
+renderer.toneMappingExposure = 1.75;
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.add(new THREE.AmbientLight(0xffffff, 0.02));
+const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 120);
+camera.position.set(0, 1.7, 0);
+
+const mat = new THREE.MeshStandardMaterial({ color: 0x8a8a86, roughness: 0.9 });
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), mat);
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+scene.add(floor);
+const wall = new THREE.Mesh(new THREE.PlaneGeometry(40, 8), mat);
+wall.position.set(0, 4, -10);
+wall.receiveShadow = true;
+scene.add(wall);
+const boxm = new THREE.Mesh(new THREE.BoxGeometry(1, 2, 1), mat);
+boxm.position.set(-1.5, 1, -6);
+boxm.castShadow = true;
+scene.add(boxm);
+
+const flash = new THREE.SpotLight(0xfff1d0, 55, 24, 0.48, 0.9, 1.25);
+if (q.get('cookie') !== '0') flash.map = makeFlashCookie();
+flash.castShadow = true;
+flash.shadow.mapSize.set(1024, 1024);
+flash.shadow.bias = -0.002;
+flash.position.set(0, 1.55, 0);
+const t = new THREE.Object3D();
+t.position.set(0, 1.2, -10);
+scene.add(t);
+flash.target = t;
+scene.add(flash);
+const spill = new THREE.SpotLight(0xffe6bf, 7, 14, 1.05, 0.95, 1.8);
+spill.position.copy(flash.position);
+spill.target = t;
+scene.add(spill);
+
+renderer.render(scene, camera);
+window.__ready = true;
+</script>
+</body>
+</html>

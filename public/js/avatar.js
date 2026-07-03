@@ -2,6 +2,7 @@
 
 import * as THREE from 'three';
 import { createCharacter } from './characters.js';
+import { makeFlashCookie } from './player.js';
 
 export function makeNameSprite(name, color = '#7ec850') {
   const c = document.createElement('canvas');
@@ -72,7 +73,11 @@ export class PartnerAvatar {
     this.nameSprite = makeNameSprite(name);
     this.mesh.add(this.nameSprite);
 
-    this.flash = new THREE.SpotLight(0xfff1d0, 0, 18, 0.42, 0.5, 1.2);
+    this.flash = new THREE.SpotLight(0xfff1d0, 0, 20, 0.46, 0.9, 1.25);
+    this.flash.map = makeFlashCookie();
+    this.flash.castShadow = true; // без теней SpotLight игнорирует map
+    this.flash.shadow.mapSize.set(512, 512);
+    this.flash.shadow.bias = -0.002;
     this.flashTarget = new THREE.Object3D();
     this.scene.add(this.flashTarget);
     this.flash.target = this.flashTarget;
@@ -124,7 +129,7 @@ export class PartnerAvatar {
     }
 
     // фонарик
-    this.flash.intensity = (this.dst.light && !this.dst.hidden) ? 30 : 0;
+    this.flash.intensity = (this.dst.light && !this.dst.hidden) ? 48 : 0;
     if (this.dst.light) {
       const fx = -Math.sin(this.cur.yaw), fz = -Math.cos(this.cur.yaw);
       this.flashTarget.position.set(this.cur.x + fx * 6, 1.2, this.cur.z + fz * 6);

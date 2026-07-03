@@ -23,6 +23,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { World } from './js/world.js';
+import { makeFlashCookie } from './js/player.js';
 
 const q = new URLSearchParams(location.search);
 const index = q.get('index') || '0';
@@ -49,11 +50,42 @@ scene.add(new THREE.AmbientLight(0xffffff, data.ambient * 1.15));
 const world = new World(scene);
 world.build(data);
 
-// камера: от спавна или из параметров
-const px = q.get('x') ? parseFloat(q.get('x')) : data.spawn.x;
-const pz = q.get('z') ? parseFloat(q.get('z')) : data.spawn.z;
+// ?prop=N — камера рядом с N-м предметом мебели
+if (q.get('prop') !== null && world.propColliders?.length) {
+  const pc = world.propColliders[parseInt(q.get('prop'), 10) % world.propColliders.length];
+  q.set('x', pc.x + 1.9);
+  q.set('z', pc.z + 1.4);
+  q.set('yaw', Math.atan2(1.9, 1.4));
+}
+
+// камера: от спавна, из параметров или напротив предмета (?item=fuse&nth=0)
+let px = q.get('x') ? parseFloat(q.get('x')) : data.spawn.x;
+let pz = q.get('z') ? parseFloat(q.get('z')) : data.spawn.z;
+let lookAt = null;
+if (q.get('item')) {
+  const wanted = data.items.filter(i => i.type === q.get('item'));
+  const it = wanted[parseInt(q.get('nth') || '0', 10)] || wanted[0];
+  if (it) {
+    // встаём в ближайшую свободную клетку рядом
+    const C = data.cell;
+    const cells = Uint8Array.from(atob(data.cells), c => c.charCodeAt(0));
+    const gx = Math.floor(it.x / C), gz = Math.floor(it.z / C);
+    outer: for (const rr of [1, 2]) {
+      for (const [dx, dz] of [[0, rr], [rr, 0], [0, -rr], [-rr, 0]]) {
+        const cx = gx + dx, cz = gz + dz;
+        if (cx < 0 || cz < 0 || cx >= data.w || cz >= data.h) continue;
+        if (cells[cz * data.w + cx] === 1) continue;
+        px = (cx + 0.5) * C; pz = (cz + 0.5) * C;
+        break outer;
+      }
+    }
+    lookAt = { x: it.x, z: it.z };
+  }
+}
 let yaw;
-if (q.get('yaw') !== null) {
+if (lookAt) {
+  yaw = Math.atan2(-(lookAt.x - px), -(lookAt.z - pz));
+} else if (q.get('yaw') !== null) {
   yaw = parseFloat(q.get('yaw'));
 } else {
   // смотрим в самый длинный открытый коридор
@@ -77,14 +109,21 @@ camera.rotation.y = yaw;
 
 // фонарик по желанию
 if (q.get('light') === '1') {
-  const flash = new THREE.SpotLight(0xfff1d0, 32, 22, 0.46, 0.45, 1.2);
+  const flash = new THREE.SpotLight(0xfff1d0, 55, 24, 0.48, 0.9, 1.25);
+  if (q.get('cookie') !== '0') flash.map = makeFlashCookie();
   flash.castShadow = true;
+  flash.shadow.mapSize.set(1024, 1024);
+  flash.shadow.bias = -0.002;
   flash.position.copy(camera.position);
   const t = new THREE.Object3D();
   t.position.set(px - Math.sin(yaw) * 8, 1.2, pz - Math.cos(yaw) * 8);
   scene.add(t);
   flash.target = t;
   scene.add(flash);
+  const spill = new THREE.SpotLight(0xffe6bf, 7, 14, 1.05, 0.95, 1.8);
+  spill.position.copy(camera.position);
+  spill.target = t;
+  scene.add(spill);
 }
 
 const composer = new EffectComposer(renderer);

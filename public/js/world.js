@@ -4,8 +4,8 @@
 import * as THREE from 'three';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
 import { themeMaterials, waterNormalTexture } from './materials.js';
-import { plateTexture } from './textures.js';
-import { scatterProps } from './props.js';
+import { plateTexture, fuseLabelTexture, badgeTexture } from './textures.js';
+import { scatterProps, spawnProp } from './props.js';
 import { loadMonster, bakeStatic } from './characters.js';
 
 const FLOOR = 0, WALL = 1, WATER = 2;
@@ -30,8 +30,9 @@ export class World {
   clear() {
     if (this.group) {
       this.scene.remove(this.group);
-      // материалы тем кэшируются в materials.js — освобождаем только геометрию
-      this.group.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+      // материалы тем кэшируются в materials.js — освобождаем только геометрию;
+      // геометрия GLB-пропов общая (кэш в props.js) — её не трогаем
+      this.group.traverse(o => { if (o.geometry && !o.userData.shared) o.geometry.dispose(); });
     }
     for (const l of this.lightPool) this.scene.remove(l);
     if (this.dust) { this.scene.remove(this.dust); this.dust.geometry.dispose(); this.dust = null; }
@@ -403,17 +404,17 @@ export class World {
   _beacon(color, ceilH) {
     const g = new THREE.Group();
     const beam = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.16, 0.34, ceilH, 12, 1, true),
+      new THREE.CylinderGeometry(0.10, 0.22, ceilH, 12, 1, true),
       new THREE.MeshBasicMaterial({
-        color, transparent: true, opacity: 0.14,
+        color, transparent: true, opacity: 0.09,
         blending: THREE.AdditiveBlending, depthWrite: false,
         side: THREE.DoubleSide, fog: false,
       })
     );
     beam.position.y = ceilH / 2 - 0.4;
     g.add(beam);
-    const pl = new THREE.PointLight(color, 4, 6, 1.8);
-    pl.position.y = 0.2;
+    const pl = new THREE.PointLight(color, 2.5, 5, 1.8);
+    pl.position.y = 0.35;
     g.add(pl);
     return g;
   }
@@ -421,63 +422,60 @@ export class World {
   _buildItem(item, theme, ceilH) {
     let mesh;
     if (item.type === 'fuse') {
-      mesh = new THREE.Mesh(
-        new THREE.BoxGeometry(0.22, 0.34, 0.14),
-        new THREE.MeshStandardMaterial({ color: 0x333333, emissive: 0x2a9d3f, emissiveIntensity: 1.2 })
+      // керамический предохранитель с латунными колпачками, лежит и покачивается
+      mesh = new THREE.Group();
+      const body = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.055, 0.055, 0.26, 16),
+        new THREE.MeshStandardMaterial({ map: fuseLabelTexture(), roughness: 0.55 })
       );
+      const capMat = new THREE.MeshStandardMaterial({ color: 0xc9a44a, roughness: 0.3, metalness: 0.9 });
+      for (const sy of [-1, 1]) {
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.05, 16), capMat);
+        cap.position.y = sy * 0.145;
+        body.add(cap);
+      }
+      body.rotation.z = Math.PI / 2;
+      body.castShadow = true;
+      mesh.add(body);
       mesh.position.set(item.x, 0.5, item.z);
       mesh.userData.bob = true;
       mesh.add(this._beacon(0x36ff70, ceilH));
     } else if (item.type === 'fusebox') {
+      // электрощиток с кабель-каналом, прижат к ближайшей стене
       mesh = new THREE.Group();
-      const box = new THREE.Mesh(
-        new THREE.BoxGeometry(0.7, 1.0, 0.25),
-        new THREE.MeshStandardMaterial({ color: 0x6a6a6e, roughness: 0.45, metalness: 0.7 })
-      );
-      box.position.y = 1.3;
-      mesh.add(box);
+      mesh.add(spawnProp('item_fusebox', { cloneMats: true }));
       const lamp = new THREE.Mesh(
         new THREE.SphereGeometry(0.05, 8, 6),
         new THREE.MeshStandardMaterial({ emissive: 0xff2222, emissiveIntensity: 2 })
       );
-      lamp.position.set(0, 1.85, 0.1);
+      lamp.position.set(0, 1.35, 0.16);
       mesh.add(lamp);
       mesh.userData.lamp = lamp;
-      mesh.position.set(item.x, 0, item.z);
+      const ori = this._wallOrientation(item.x, item.z);
+      mesh.position.set(item.x + ori.ox * 0.62, 0, item.z + ori.oz * 0.62);
+      mesh.rotation.y = ori.rot;
     } else if (item.type === 'lever') {
+      // настенный рычаг
       mesh = new THREE.Group();
-      const base = new THREE.Mesh(
-        new THREE.BoxGeometry(0.45, 0.7, 0.3),
-        new THREE.MeshStandardMaterial({ color: 0x88452a, roughness: 0.55, metalness: 0.6 })
-      );
-      base.position.y = 1.2;
-      mesh.add(base);
-      const handle = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.04, 0.04, 0.65),
-        new THREE.MeshStandardMaterial({ color: 0xcc3333, roughness: 0.35, metalness: 0.7 })
-      );
-      handle.position.set(0, 1.45, 0.18);
-      handle.rotation.x = -0.7;
-      mesh.add(handle);
-      mesh.userData.handle = handle;
-      mesh.position.set(item.x, 0, item.z);
+      const lv = spawnProp('item_lever', {
+        cloneMats: true,
+        onReady: (m) => {
+          m.traverse(o => {
+            if (o.isMesh && /handle|lever|stick|arm/i.test(o.name)) mesh.userData.handle = o;
+          });
+        },
+      });
+      lv.position.y = 0.95;
+      mesh.add(lv);
+      const ori = this._wallOrientation(item.x, item.z);
+      mesh.position.set(item.x + ori.ox * 0.62, 0, item.z + ori.oz * 0.62);
+      mesh.rotation.y = ori.rot;
     } else if (item.type === 'locker') {
       mesh = new THREE.Group();
-      const body = new THREE.Mesh(
-        new THREE.BoxGeometry(0.9, 2.1, 0.7),
-        new THREE.MeshStandardMaterial({ color: 0x2d4a3e, roughness: 0.5, metalness: 0.55 })
-      );
-      body.position.y = 1.05;
-      mesh.add(body);
-      for (let i = 0; i < 3; i++) {
-        const slot = new THREE.Mesh(
-          new THREE.BoxGeometry(0.5, 0.03, 0.02),
-          new THREE.MeshStandardMaterial({ color: 0x0a0f0c, roughness: 0.9 })
-        );
-        slot.position.set(0, 1.55 + i * 0.12, 0.36);
-        mesh.add(slot);
-      }
-      mesh.position.set(item.x, 0, item.z);
+      mesh.add(spawnProp('locker'));
+      const ori = this._wallOrientation(item.x, item.z);
+      mesh.position.set(item.x + ori.ox * 0.4, 0, item.z + ori.oz * 0.4);
+      mesh.rotation.y = ori.rot; // дверцей от стены
     } else if (item.type === 'plate') {
       mesh = new THREE.Mesh(
         new THREE.PlaneGeometry(0.9, 0.9),
@@ -507,79 +505,45 @@ export class World {
     } else if (item.type === 'badge') {
       mesh = new THREE.Group();
       const card = new THREE.Mesh(
-        new THREE.BoxGeometry(0.26, 0.36, 0.02),
-        new THREE.MeshStandardMaterial({ color: 0xe8e4d8, roughness: 0.4, emissive: 0x3a6ea8, emissiveIntensity: 0.5 })
+        new THREE.BoxGeometry(0.26, 0.36, 0.015),
+        new THREE.MeshStandardMaterial({ map: badgeTexture(), roughness: 0.4, emissive: 0xffffff, emissiveMap: badgeTexture(), emissiveIntensity: 0.22 })
       );
+      card.castShadow = true;
       mesh.add(card);
-      const stripe = new THREE.Mesh(
-        new THREE.BoxGeometry(0.26, 0.07, 0.021),
-        new THREE.MeshStandardMaterial({ color: 0x2a3a6e, roughness: 0.4 })
-      );
-      stripe.position.y = 0.1;
-      mesh.add(stripe);
       mesh.position.set(item.x, 1.1, item.z);
       mesh.userData.bob = true;
       mesh.userData.bobBase = 1.1;
       mesh.add(this._beacon(0x4a9aff, ceilH));
     } else if (item.type === 'valve' && this.level.theme === 'lightsout') {
-      // генератор: ящик с рукоятью и лампочкой
+      // переносной генератор с сигнальной лампой
       mesh = new THREE.Group();
-      const body = new THREE.Mesh(
-        new THREE.BoxGeometry(1.0, 1.1, 0.7),
-        new THREE.MeshStandardMaterial({ color: 0x35383c, roughness: 0.5, metalness: 0.7 })
-      );
-      body.position.y = 0.55;
-      mesh.add(body);
-      const wheel = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.16, 0.16, 0.1, 12),
-        new THREE.MeshStandardMaterial({ color: 0xa03030, roughness: 0.4, metalness: 0.6 })
-      );
-      wheel.rotation.z = Math.PI / 2;
-      wheel.position.set(0.55, 0.7, 0);
-      mesh.add(wheel);
-      mesh.userData.wheel = wheel;
+      mesh.add(spawnProp('item_generator', { cloneMats: true }));
       const lamp = new THREE.Mesh(
         new THREE.SphereGeometry(0.06, 8, 6),
         new THREE.MeshStandardMaterial({ emissive: 0xff2222, emissiveIntensity: 2 })
       );
-      lamp.position.set(0, 1.25, 0);
+      lamp.position.set(0, 1.3, 0);
       mesh.add(lamp);
       mesh.userData.lamp = lamp;
       mesh.position.set(item.x, 0, item.z);
       mesh.add(this._beacon(0xff4422, ceilH));
     } else if (item.type === 'valve') {
+      // ржавый промышленный вентиль
       mesh = new THREE.Group();
-      const pipe = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.09, 0.09, 1.4),
-        new THREE.MeshStandardMaterial({ color: 0x5a4632, roughness: 0.5, metalness: 0.75 })
+      mesh.add(spawnProp('item_valve', { cloneMats: true }));
+      const lamp = new THREE.Mesh(
+        new THREE.SphereGeometry(0.045, 8, 6),
+        new THREE.MeshStandardMaterial({ emissive: 0xff2222, emissiveIntensity: 1.6 })
       );
-      pipe.position.y = 0.7;
-      mesh.add(pipe);
-      const wheel = new THREE.Mesh(
-        new THREE.TorusGeometry(0.3, 0.05, 8, 20),
-        new THREE.MeshStandardMaterial({ color: 0xa03030, roughness: 0.4, metalness: 0.7 })
-      );
-      wheel.rotation.x = Math.PI / 2;
-      wheel.position.y = 1.25;
-      mesh.add(wheel);
-      mesh.userData.wheel = wheel;
+      lamp.position.set(0, 1.12, 0);
+      mesh.add(lamp);
+      mesh.userData.lamp = lamp;
       mesh.position.set(item.x, 0, item.z);
     } else if (item.type === 'key') {
       mesh = new THREE.Group();
-      const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(0.09, 0.025, 8, 16),
-        new THREE.MeshStandardMaterial({ color: 0xd8b54a, roughness: 0.25, metalness: 0.9, emissive: 0x6a5418, emissiveIntensity: 0.5 })
-      );
-      mesh.add(ring);
-      const stem = new THREE.Mesh(
-        new THREE.BoxGeometry(0.035, 0.2, 0.02),
-        ring.material
-      );
-      stem.position.y = -0.17;
-      mesh.add(stem);
-      const tooth = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.035, 0.02), ring.material);
-      tooth.position.set(0.03, -0.25, 0);
-      mesh.add(tooth);
+      const k = spawnProp('item_key');
+      k.position.y = -0.16; // пивот модели снизу — центрируем для вращения
+      mesh.add(k);
       mesh.position.set(item.x, 1.0, item.z);
       mesh.userData.bob = true;
       mesh.userData.bobBase = 1.0;
@@ -606,20 +570,17 @@ export class World {
       mesh.add(this._beacon(0xff6ab0, ceilH));
     } else if (item.type === 'switch') {
       mesh = new THREE.Group();
-      const body = new THREE.Mesh(
-        new THREE.BoxGeometry(0.5, 0.9, 0.3),
-        new THREE.MeshStandardMaterial({ color: 0x444448, roughness: 0.45, metalness: 0.7 })
-      );
-      body.position.y = 1.25;
-      mesh.add(body);
+      mesh.add(spawnProp('item_fusebox', { cloneMats: true }));
       const lamp = new THREE.Mesh(
         new THREE.SphereGeometry(0.07, 8, 6),
         new THREE.MeshStandardMaterial({ emissive: 0xff2222, emissiveIntensity: 2.4 })
       );
-      lamp.position.set(0, 1.8, 0.1);
+      lamp.position.set(0, 1.35, 0.16);
       mesh.add(lamp);
       mesh.userData.lamp = lamp;
-      mesh.position.set(item.x, 0, item.z);
+      const ori = this._wallOrientation(item.x, item.z);
+      mesh.position.set(item.x + ori.ox * 0.62, 0, item.z + ori.oz * 0.62);
+      mesh.rotation.y = ori.rot;
     }
     if (mesh) {
       mesh.userData.item = item;

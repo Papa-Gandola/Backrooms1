@@ -3,6 +3,90 @@
 
 import * as THREE from 'three';
 
+// Гобо-текстура луча: горячее пятно, кольцевой ореол, неровный рваный край
+// и лёгкие радиальные штрихи — как у настоящего LED-фонаря.
+export function makeFlashCookie() {
+  const size = 512;
+  const c = document.createElement('canvas');
+  c.width = c.height = size;
+  const ctx = c.getContext('2d');
+  const R = size / 2;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, size, size);
+
+  // основной профиль: яркая середина, плавный спад к краю
+  let g = ctx.createRadialGradient(R, R, 0, R, R, R);
+  g.addColorStop(0.0, 'rgba(255,250,235,0.98)');
+  g.addColorStop(0.35, 'rgba(255,244,218,0.80)');
+  g.addColorStop(0.62, 'rgba(255,238,205,0.55)');
+  g.addColorStop(0.85, 'rgba(255,234,195,0.30)');
+  g.addColorStop(1.0, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+
+  // лёгкий провал рефлектора между пятном и короной
+  g = ctx.createRadialGradient(R, R, R * 0.34, R, R, R * 0.66);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(0.5, 'rgba(0,0,0,0.14)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+
+  // корона — светлое кольцо ближе к краю
+  g = ctx.createRadialGradient(R, R, R * 0.62, R, R, R * 0.94);
+  g.addColorStop(0, 'rgba(0,0,0,0)');
+  g.addColorStop(0.5, 'rgba(255,240,208,0.20)');
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+
+  // радиальные штрихи от рефлектора (неравномерность по окружности)
+  ctx.save();
+  ctx.translate(R, R);
+  ctx.globalCompositeOperation = 'multiply';
+  for (let i = 0; i < 60; i++) {
+    const a = (i / 60) * Math.PI * 2 + Math.sin(i * 12.9898) * 0.05;
+    const dark = 0.90 + Math.sin(i * 78.233) * 0.08;
+    ctx.strokeStyle = `rgba(${(dark * 255) | 0},${(dark * 255) | 0},${(dark * 255) | 0},0.30)`;
+    ctx.lineWidth = 4 + (Math.sin(i * 3.7) + 1) * 5;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * R * 0.36, Math.sin(a) * R * 0.36);
+    ctx.lineTo(Math.cos(a) * R * 0.99, Math.sin(a) * R * 0.99);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  // рваный внешний край
+  ctx.save();
+  ctx.translate(R, R);
+  ctx.globalCompositeOperation = 'destination-in';
+  ctx.beginPath();
+  const N = 96;
+  for (let i = 0; i <= N; i++) {
+    const a = (i / N) * Math.PI * 2;
+    const wob = 0.955 + Math.sin(a * 9 + 1.7) * 0.02 + Math.sin(a * 23 + 4.2) * 0.015;
+    const rr = R * wob;
+    if (i === 0) ctx.moveTo(Math.cos(a) * rr, Math.sin(a) * rr);
+    else ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+  }
+  ctx.closePath();
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+  ctx.restore();
+
+  // горячее пятно в центре — поверх всего
+  g = ctx.createRadialGradient(R, R, 0, R, R, R * 0.42);
+  g.addColorStop(0.0, 'rgba(255,255,250,1)');
+  g.addColorStop(0.5, 'rgba(255,250,230,0.7)');
+  g.addColorStop(1.0, 'rgba(255,244,210,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
 export class PlayerController {
   constructor(camera, world, audio) {
     this.camera = camera;
@@ -25,13 +109,16 @@ export class PlayerController {
     this.stepAccum = 0;
     this.eyeHeight = 1.7;
 
-    // фонарик
-    this.flash = new THREE.SpotLight(0xfff1d0, 0, 22, 0.46, 0.45, 1.2);
+    // фонарик: узкий луч с гобо-текстурой + широкий тусклый разлив света
+    this.flash = new THREE.SpotLight(0xfff1d0, 0, 24, 0.48, 0.9, 1.25);
+    this.flash.map = makeFlashCookie();
     this.flash.castShadow = true;
     this.flash.shadow.mapSize.set(1024, 1024);
     this.flash.shadow.bias = -0.002;
     this.flashTarget = new THREE.Object3D();
     this.flash.target = this.flashTarget;
+    this.spill = new THREE.SpotLight(0xffe6bf, 0, 14, 1.05, 0.95, 1.8);
+    this.spill.target = this.flashTarget;
 
     // объёмный конус луча (фейковый volumetric)
     const coneGeo = new THREE.ConeGeometry(2.6, 9, 24, 1, true);
@@ -49,6 +136,7 @@ export class PlayerController {
 
   addToScene(scene) {
     scene.add(this.flash);
+    scene.add(this.spill);
     scene.add(this.flashTarget);
     scene.add(this.beam);
   }
@@ -166,9 +254,12 @@ export class PlayerController {
     this.camera.rotation.z = sway;
 
     // фонарик следует за взглядом с небольшим отставанием
-    this.flash.intensity = (this.light && !this.hidden) ? 32 : 0;
+    const on = this.light && !this.hidden;
+    this.flash.intensity = on ? 55 : 0; // гобо-текстура съедает часть яркости
+    this.spill.intensity = on ? 7 : 0;
     this.flash.position.copy(this.pos);
     this.flash.position.y -= 0.15;
+    this.spill.position.copy(this.flash.position);
     const fx = -Math.sin(this.yaw) * Math.cos(this.pitch);
     const fy = Math.sin(this.pitch);
     const fz = -Math.cos(this.yaw) * Math.cos(this.pitch);

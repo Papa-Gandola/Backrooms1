@@ -213,6 +213,73 @@ export function plateTexture(glyph, slot) {
   return tex;
 }
 
+// Этикетка керамического предохранителя (обёртка цилиндра)
+let _fuseTex = null;
+export function fuseLabelTexture() {
+  if (_fuseTex) return _fuseTex;
+  const size = 256;
+  const [c, ctx] = makeCanvas(size);
+  ctx.fillStyle = '#d9cfb4';
+  ctx.fillRect(0, 0, size, size);
+  // бумажная этикетка
+  ctx.fillStyle = '#f2ead4';
+  ctx.fillRect(0, 66, size, 124);
+  ctx.strokeStyle = '#8a2a1e';
+  ctx.lineWidth = 5;
+  ctx.strokeRect(0, 72, size, 112);
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#6a1e14';
+  ctx.font = 'bold 52px monospace';
+  ctx.fillText('60 A', size / 2, 128);
+  ctx.font = 'bold 21px monospace';
+  ctx.fillText('ПРЕДОХРАНИТЕЛЬ', size / 2, 164);
+  addStains(ctx, size, 5, 'rgba(70,50,20,0.18)', 40);
+  addNoise(ctx, size, 0.07);
+  _fuseTex = new THREE.CanvasTexture(c);
+  _fuseTex.colorSpace = THREE.SRGBColorSpace;
+  return _fuseTex;
+}
+
+// Карточка-пропуск (уровень ТЦ)
+let _badgeTex = null;
+export function badgeTexture() {
+  if (_badgeTex) return _badgeTex;
+  const size = 256;
+  const [c, ctx] = makeCanvas(size);
+  ctx.fillStyle = '#e8e6de';
+  ctx.fillRect(0, 0, size, size);
+  // синяя шапка
+  ctx.fillStyle = '#23407a';
+  ctx.fillRect(0, 0, size, 54);
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 32px sans-serif';
+  ctx.fillText('ПРОПУСК', size / 2, 38);
+  // фото с силуэтом
+  ctx.fillStyle = '#9aa4ae';
+  ctx.fillRect(22, 76, 92, 116);
+  ctx.fillStyle = '#59626d';
+  ctx.beginPath(); ctx.arc(68, 118, 22, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(68, 178, 36, 28, 0, Math.PI, 0, true); ctx.fill();
+  // строки данных
+  ctx.fillStyle = '#3a3f47';
+  for (const [y, w] of [[92, 100], [116, 82], [140, 96], [164, 70]]) {
+    ctx.fillRect(130, y, w, 9);
+  }
+  // штрих-код
+  let x = 26;
+  ctx.fillStyle = '#1a1a1a';
+  while (x < 226) {
+    const w = 2 + Math.random() * 6;
+    if (Math.random() > 0.4) ctx.fillRect(x, 210, w, 34);
+    x += w + 2;
+  }
+  addNoise(ctx, size, 0.04);
+  _badgeTex = new THREE.CanvasTexture(c);
+  _badgeTex.colorSpace = THREE.SRGBColorSpace;
+  return _badgeTex;
+}
+
 // Светящаяся улыбка для Улыбающегося
 export function smilerTexture() {
   const size = 256;
