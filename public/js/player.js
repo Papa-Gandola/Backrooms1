@@ -223,6 +223,11 @@ export class PlayerController {
           nz = c.z + (dz2 / d) * min;
         }
       }
+      // мебель могла затолкать в стену — повторная проверка стен
+      if (this.world.grid) {
+        const c2 = this.world.collide(nx, nz, 0.35);
+        nx = c2.x; nz = c2.z;
+      }
     }
     this.pos.x = nx; this.pos.z = nz;
 

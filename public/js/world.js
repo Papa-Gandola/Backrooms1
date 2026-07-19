@@ -751,10 +751,29 @@ export class World {
     return this.grid.cells[gz * this.grid.w + gx] === WATER;
   }
 
+  // ближайшая свободная клетка (спиральный поиск вокруг gx,gz)
+  nearestFreeCell(gx, gz) {
+    if (!this.isWall(gx, gz)) return { gx, gz };
+    for (let ring = 1; ring <= 6; ring++) {
+      for (let dz = -ring; dz <= ring; dz++) {
+        for (let dx = -ring; dx <= ring; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== ring) continue;
+          if (!this.isWall(gx + dx, gz + dz)) return { gx: gx + dx, gz: gz + dz };
+        }
+      }
+    }
+    return { gx, gz };
+  }
+
   collide(x, z, r) {
     const C = this.grid.cell;
     let nx = x, nz = z;
     const gx = Math.floor(x / C), gz = Math.floor(z / C);
+    // если позиция оказалась внутри стены — выталкиваем в ближайшую свободную клетку
+    if (this.isWall(gx, gz)) {
+      const f = this.nearestFreeCell(gx, gz);
+      return { x: (f.gx + 0.5) * C, z: (f.gz + 0.5) * C };
+    }
     for (let dz = -1; dz <= 1; dz++) {
       for (let dx = -1; dx <= 1; dx++) {
         const cx = gx + dx, cz = gz + dz;
